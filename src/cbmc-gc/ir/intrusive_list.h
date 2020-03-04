@@ -89,6 +89,9 @@ public:
 	Iterator iterator() { return Iterator(this); }
 	ConstIterator const_iterator() const { return ConstIterator(this); }
 
+	// Should not use!
+	IntrusiveListItem* next() { return m_next; }
+
 private:
 	IntrusiveListItem *m_next;
 	IntrusiveListItem *m_prev;
@@ -109,6 +112,24 @@ public:
 		m_sentinel.m_next = &m_sentinel;
 		m_sentinel.m_prev = &m_sentinel;
 	}
+
+	// We cannot copy an intrusive list because the first and the last node
+	// store a pointer to rhs.m_sentinel. Thus, these pointers need to be
+	// adjusted to point to this.m_sentinel.
+	IntrusiveList(IntrusiveList const &rhs) = delete;
+
+	// TODO This code may be wrong. I got a segfault, but am not sure if it
+	//      originated here.
+	/*IntrusiveList(IntrusiveList &&rhs) :
+		m_sentinel{rhs.m_sentinel},
+		m_size{rhs.m_size}
+	{
+		m_sentinel.m_prev->m_next = &m_sentinel;
+		m_sentinel.m_next->m_prev = &m_sentinel;
+
+		rhs.m_sentinel.m_next = &rhs.m_sentinel;
+		rhs.m_sentinel.m_prev = &rhs.m_sentinel;
+	}*/
 
 	void insert(ListItem *pos, ListItem *item)
 	{
@@ -133,6 +154,8 @@ public:
 		T* next = static_cast<T*>(item->m_next);
 		item->m_next = nullptr;
 		item->m_prev = nullptr;
+
+		--m_size;
 
 		return next;
 	}

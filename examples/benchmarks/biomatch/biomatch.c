@@ -1,5 +1,5 @@
-#define N 2048
-#define K 4
+#define N 256
+#define K 4 // currently fixed, do not change
 
 #define INNER 64
 #define OUTER (N/INNER)
@@ -13,7 +13,7 @@ int_t match_fix(int_t x1, int_t x2,int_t x3, int_t x4, int_t y1, int_t y2, int_t
   int_t r = 0;
   int i;
   int t1 = (x1-y1);
-  int t2 = (x2-y2);  
+  int t2 = (x2-y2);
   int t3 = (x3-y3);
   int t4 = (x4-y4);
   r = t1*t1 + t2*t2 + t3*t3 + t4*t4;
@@ -26,7 +26,7 @@ int_t match_fix(int_t x1, int_t x2,int_t x3, int_t x4, int_t y1, int_t y2, int_t
   for(i = 0; i < K; i++) {
     int t = (x[i]-y[i]);
     r+= t*t;
-  }  
+  }
   return r;
 }
 
@@ -69,7 +69,7 @@ void main_decomposed_1() {
   for(int i = 0; i < N; i++) {
     matches[i] = match(INPUT_A_db[i], INPUT_B_sample);
   }
-  
+
   // Compute minimum
   int_t best_match = matches[0];
   for(int i = 1; i < N; i++) {
@@ -77,10 +77,10 @@ void main_decomposed_1() {
       best_match = matches[i];
     }
   }
-    
+
 
   int_t OUTPUT_res = best_match;
-  
+
 }*/
 
 
@@ -102,7 +102,7 @@ int_t min(int_t *data, int len, int stride) {
 			if(data[i+stride] < data[i]) {
 				data[i] = data[i+stride];
 			}
-			
+
 		}
 		return min(data, len, stride<<1);
 	}
@@ -127,11 +127,11 @@ int_t min_decomposed(int_t *data, int len) {
   }
   // Compute minimum
   int_t best_match = min(matches, len, 1);
-  return best_match; 
+  return best_match;
 }*/
 
 void match_decomposed(int_t *db, int_t *OUTPUT_matches, unsigned len, int_t *sample) {
-	
+
   // Compute distances
   for(int i = 0; i < len; i++) {
     OUTPUT_matches[i] = match_fix(db[i*K], db[i*K+1], db[i*K+2], db[i*K+3], sample[0], sample[1], sample[2], sample[3]);
@@ -153,14 +153,14 @@ void mpc_main() {
   // Compute distances
   for(int i = 0; i < OUTER; i++) {
 		int_t db_inner[INNER*K];
-		
+
 		memcpy(db_inner, &INPUT_A_db[i*INNER*K], INNER*K*sizeof(int_t));
 		match_decomposed(db_inner, matches_inner, INNER, INPUT_B_sample);
 		memcpy(&matches[i*INNER], matches_inner, INNER*sizeof(int_t));
   }
   // Compute minimum
   int_t best_match = min_decomposed(matches, N);
-  int_t OUTPUT_res = best_match; 
+  int_t OUTPUT_res = best_match;
 }
 
 
@@ -175,5 +175,5 @@ void mpc_main() {
   }
   // Compute minimum
   int_t best_match = min(matches, N,1);
-  int_t OUTPUT_res = best_match; 
+  int_t OUTPUT_res = best_match;
 }*/

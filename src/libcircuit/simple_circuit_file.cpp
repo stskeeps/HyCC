@@ -216,9 +216,10 @@ size_t write_input_partitioning(std::ostream &os, Type const &type, VectorGateRa
 	switch(type.kind())
 	{
 		case TypeKind::bits:
+		case TypeKind::boolean:
 		case TypeKind::integer:
 		{
-			int width = bit_width(type);
+			int width = get_bit_width(type);
 
 			if(gates.front()->get_width() == width)
 			{
@@ -250,6 +251,9 @@ size_t write_input_partitioning(std::ostream &os, Type const &type, VectorGateRa
 		case TypeKind::array:
 		{
 			int length = type.array().length;
+			if(length == 0)
+				throw std::runtime_error{"Zero-length arrays not supported"};
+
 			write_input_partition_header(os, InputPartitioning::array, length);
 
 			auto gates_per_element = write_input_partitioning(os, *type.array().sub, gates);
@@ -290,6 +294,9 @@ void write_type(std::ostream &os, Type const &type)
 	{
 		case TypeKind::bits:
 			write_type_header(os, 1, type.bits().width);
+			break;
+		case TypeKind::boolean:
+			write_type_header(os, 5, 1);
 			break;
 		case TypeKind::integer:
 			write_type_header(os, type.integer().is_signed ? 1 : 2, type.integer().width);
@@ -667,6 +674,13 @@ Type read_type(RawReader &rr)
 
 			return strukt;
 		}
+		case 5:
+		{
+			if(length != 1)
+				throw std::runtime_error{"The bit-width of a boolean must be one"};
+
+			return BoolType{};
+		}
 		default:
 			throw std::runtime_error{"Unknown type: " + std::to_string(type_id)};
 	}
@@ -709,7 +723,7 @@ void assign_input_gates_to_variables(simple_circuitt &circuit)
 
 	for(auto *var: circuit.ordered_inputs())
 	{
-		int width = bit_width(var->type);
+		int width = get_bit_width(var->type);
 		while(!inputs.empty() && width > 0)
 		{
 			var->gates.push_back(&inputs.front());
@@ -725,7 +739,7 @@ void assign_input_gates_to_variables(simple_circuitt &circuit)
 	{
 		for(auto &ret: call.returns)
 		{
-			int width = bit_width(ret.type);
+			int width = get_bit_width(ret.type);
 			while(!inputs.empty() && width > 0)
 			{
 				ret.gates.push_back(&inputs.front());
@@ -936,7 +950,7 @@ void simple_circuitt::read(std::istream &is)
 	// Read OUTPUT gates
 	for(auto *var: m_ordered_outputs)
 	{
-		int width = bit_width(var->type);
+		int width = get_bit_width(var->type);
 		while(width > 0)
 		{
 			auto fanin = id_converter.get(rr.read<uint32_t>());
@@ -955,7 +969,7 @@ void simple_circuitt::read(std::istream &is)
 	{
 		for(auto &arg: call.args)
 		{
-			int width = bit_width(arg.type);
+			int width = get_bit_width(arg.type);
 			while(width > 0)
 			{
 				auto fanin = id_converter.get(rr.read<uint32_t>());

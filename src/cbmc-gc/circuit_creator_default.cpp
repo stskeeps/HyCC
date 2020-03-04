@@ -6,43 +6,116 @@
 //==================================================================================================
 namespace {
 
-std::vector<simple_circuitt::gatet*> literals_to_input_gates(
+simple_circuitt::gatet* create_input_or_output(
+  simple_circuitt::GATE_OP in_or_out,
+  boolbv_mapt::map_bitt lit,
+  std::unordered_map<int, simple_circuitt::gatet*> &literal_to_gate,
+  int &counter,
+  circuit_creator_defaultt &creator,
+  simple_circuitt &circuit)
+{
+  if(in_or_out == simple_circuitt::INPUT)
+  {
+    auto gate = circuit.create_input_gate(std::to_string(counter++));
+    literal_to_gate[lit.l.dimacs()] = gate;
+    return gate;
+  }
+  else
+  {
+    auto gate = circuit.create_output_gate(std::to_string(lit.l.dimacs()));
+    gate->add_fanin({convert_node(lit.l, literal_to_gate, creator, circuit), 0}, 0);
+    return gate;
+  }
+}
+
+using LiteralMapIt = boolbv_mapt::literal_mapt::const_iterator;
+
+template<typename Func>
+void foreach_leave_value(typet const &type, LiteralMapIt &lits_cur, LiteralMapIt lits_end, Func &&func)
+{
+  if(type.id() == ID_array)
+  {
+    array_typet array_type = to_array_type(type);
+
+    // Must have a finite size
+    mp_integer array_size_mp;
+    if(to_integer(array_type.size(), array_size_mp))
+      throw std::runtime_error{"failed to convert array size"};
+
+    int array_size = integer2size_t(array_size_mp);
+    for(int i = 0; i < array_size; ++i)
+      foreach_leave_value(array_type.subtype(), lits_cur, lits_end, std::forward<Func>(func));
+  }
+  else if(type.id() == ID_struct)
+  {
+    struct_typet struct_type = to_struct_type(type);
+    auto const &comps = struct_type.components();
+
+    for(size_t i = 0; i < comps.size(); ++i)
+      foreach_leave_value(comps[i].type(), lits_cur, lits_end, std::forward<Func>(func));
+  }
+  else if(type.id() == ID_signedbv || type.id() == ID_unsignedbv || type.id() == ID_c_bool)
+  {
+    int width = type.get_int("width");
+    func(type, lits_cur, lits_cur + width);
+    lits_cur += width;
+  }
+  else
+  {
+    std::cout << type.pretty() << std::endl;
+    assert(!"Invalid input type");
+  }
+}
+
+std::vector<simple_circuitt::gatet*> literals_to_io_gates(
+  simple_circuitt::GATE_OP in_or_out,
+  typet const &type,
   boolbv_mapt::literal_mapt const &literals,
   std::unordered_map<int, simple_circuitt::gatet*> &literal_to_gate,
   int &counter,
-  simple_circuitt &circuit)
-{
-  std::vector<simple_circuitt::gatet*> gates;
-  for(auto lit: literals)
-  {
-    if(!lit.is_set)
-      throw std::runtime_error{"Literal of INPUT varialble is not set"};
-
-    auto gate = circuit.create_input_gate(std::to_string(counter++));
-    literal_to_gate[lit.l.dimacs()] = gate;
-
-    gates.push_back(gate);
-  }
-
-  return gates;
-}
-
-std::vector<simple_circuitt::gatet*> literals_to_output_gates(
-  boolbv_mapt::literal_mapt const &literals,
-  std::unordered_map<int, simple_circuitt::gatet*> &literal_to_gate,
   circuit_creator_defaultt &creator,
   simple_circuitt &circuit)
 {
   std::vector<simple_circuitt::gatet*> gates;
-  for(auto maybe_lit: literals)
-  {
-    if(!maybe_lit.is_set)
-      throw std::runtime_error{"Literal of OUTPUT varialble is not set"};
 
-    auto gate = circuit.create_output_gate(std::to_string(maybe_lit.l.dimacs()));
-    gate->add_fanin({convert_node(maybe_lit.l, literal_to_gate, creator, circuit), 0}, 0);
-    gates.push_back(gate);
-  }
+  auto lits_begin = literals.begin();
+  foreach_leave_value(type, lits_begin, literals.end(), [&](typet const &leave_type, LiteralMapIt lits_b, LiteralMapIt lits_e)
+  {
+    if(leave_type.id() == ID_c_bool)
+    {
+      // Special treatment for booleans: We want booleans to use only a single INPUT/OUTPUT bit,
+      // but according to the C standard, _Bool must have at least CHAR_BIT bits. However, since in a
+      // well-behaved program the value read from a boolean variable is always zero or one, we take
+      // the freedom and use only a single gate for all CHAR_BIT bits.
+
+      auto gate = create_input_or_output(in_or_out, *lits_b, literal_to_gate, counter, creator, circuit);
+      gates.push_back(gate);
+
+      if(!lits_b->is_set)
+        throw std::runtime_error{"Literal of INPUT/OUTPUT varialble is not set"};
+
+      literal_to_gate[lits_b->l.dimacs()] = gate;
+
+      // Map all except the first literal of the boolean value to zero
+      while(++lits_b != lits_e)
+        literal_to_gate[lits_b->l.dimacs()] = &circuit.get_zero_gate();
+    }
+    else
+    {
+      while(lits_b != lits_e)
+      {
+        if(!lits_b->is_set)
+          throw std::runtime_error{"Literal of INPUT varialble is not set"};
+
+        auto gate = create_input_or_output(in_or_out, *lits_b, literal_to_gate, counter, creator, circuit);
+        gates.push_back(gate);
+
+        ++lits_b;
+      }
+    }
+  });
+
+  assert(lits_begin == literals.end());
 
   return gates;
 }
@@ -62,7 +135,7 @@ void circuit_creator_defaultt::create_circuit(
   {
     if(info.io_type != io_variable_typet::output)
     {
-      std::vector<simple_circuitt::gatet*> gates = literals_to_input_gates(info.literals, literal_to_gate, counter, circuit);
+      std::vector<simple_circuitt::gatet*> gates = literals_to_io_gates(simple_circuitt::INPUT, info.type, info.literals, literal_to_gate, counter, *this, circuit);
       variable_ownert owner = variable_ownert::input_alice;
       if(info.io_type == io_variable_typet::input_b)
         owner = variable_ownert::input_bob;
@@ -81,14 +154,14 @@ void circuit_creator_defaultt::create_circuit(
     // The function's returns are our inputs
     for(auto const &var: call.returns)
     {
-      std::vector<simple_circuitt::gatet*> gates = literals_to_input_gates(var.literals, literal_to_gate, counter, circuit);
+      std::vector<simple_circuitt::gatet*> gates = literals_to_io_gates(simple_circuitt::INPUT, var.type, var.literals, literal_to_gate, counter, *this, circuit);
       circ_call.returns.push_back({str(var.var.unqualified_name), from_cbmc(var.type), std::move(gates)});
     }
 
     // The function's arguments are our outputs
     for(auto const &var: call.args)
     {
-      std::vector<simple_circuitt::gatet*> gates = literals_to_output_gates(var.literals, literal_to_gate, *this, circuit);
+      std::vector<simple_circuitt::gatet*> gates = literals_to_io_gates(simple_circuitt::OUTPUT, var.type, var.literals, literal_to_gate, counter, *this, circuit);
       circ_call.args.push_back({str(var.var.unqualified_name), from_cbmc(var.type), std::move(gates)});
     }
 
@@ -100,7 +173,7 @@ void circuit_creator_defaultt::create_circuit(
   {
     if(info.io_type == io_variable_typet::output)
     {
-      std::vector<simple_circuitt::gatet*> outs = literals_to_output_gates(info.literals, literal_to_gate, *this, circuit);
+      std::vector<simple_circuitt::gatet*> outs = literals_to_io_gates(simple_circuitt::OUTPUT, info.type, info.literals, literal_to_gate, counter, *this, circuit);
       circuit.add_variable(str(info.var.unqualified_name), variable_ownert::output, from_cbmc(info.type), std::move(outs));
     }
   }

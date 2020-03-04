@@ -1,8 +1,6 @@
 #ifndef CBMC_CIRCUIT_H
 #define CBMC_CIRCUIT_H
 
-#include "spec.hpp"
-
 #include <cassert>
 #include <fstream>
 #include <sstream>
@@ -11,6 +9,9 @@
 #include <cstring>
 #include <vector>
 #include <unordered_map>
+
+#include <libcircuit/utils.h>
+#include <libcircuit/type.h>
 
 
 // CBMC Circuit
@@ -273,7 +274,7 @@ struct hash<::circ::WireEndpoint>
 	result_type operator () (argument_type const &v) const
 	{
 		auto h = hash<::circ::ElementID>{}(v.id);
-		::circ::hash_combine(h, v.pin);
+		::hash_combine(h, v.pin);
 		return h;
 	}
 };

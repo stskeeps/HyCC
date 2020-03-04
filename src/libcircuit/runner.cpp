@@ -126,6 +126,8 @@ optional<Type> common_type(Type const &a, Type const &b)
 	{
 		case TypeKind::bits:
 			return Type{BitsType{std::max(a.bits().width, b.bits().width)}};
+		case TypeKind::boolean:
+			return Type{BoolType{}};
 		case TypeKind::integer:
 			if(auto ct = common_int_type(a.integer(), b.integer()))
 				return Type{*ct};
@@ -187,6 +189,8 @@ char const* to_cstr(TokenKind k)
 		case TokenKind::ne: return "NE";
 		case TokenKind::l_and: return "L_AND";
 		case TokenKind::l_or: return "L_OR";
+		case TokenKind::l_true: return "TRUE";
+		case TokenKind::l_false: return "FALSE";
 		case TokenKind::global: return "GLOBAL";
 		case TokenKind::spec: return "SPEC";
 		case TokenKind::print: return "PRINT";
@@ -324,6 +328,10 @@ Token ParseState::next()
 			tok.kind = TokenKind::spec;
 		else if(tok.text == "print")
 			tok.kind = TokenKind::print;
+		else if(tok.text == "true")
+			tok.kind = TokenKind::l_true;
+		else if(tok.text == "false")
+			tok.kind = TokenKind::l_false;
 	}
 	else
 		throw_parse_error(*this, std::string{"Unexpected character: "} + *cur);
@@ -444,6 +452,9 @@ Type parse_scalar_or_struct_type(ParseState &state)
 		case TokenKind::identifier:
 		{
 			auto id = accept(state, TokenKind::identifier);
+			if(id.text == "bool")
+				return Type{BoolType{}};
+
 			return lookup_integer_type_name(id.text);
 		} break;
 
@@ -496,6 +507,11 @@ std::unique_ptr<ValueNode> parse_value(ParseState &state)
 	// Parse integer
 	else if(state.tok.kind == TokenKind::integer_literal)
 		return std::unique_ptr<ValueNode>{new IntegerValueNode{accept_int(state)}};
+	// Parse boolean
+	else if(accept_if(state, TokenKind::l_true))
+		return std::unique_ptr<ValueNode>{new BooleanValueNode{true}};
+	else if(accept_if(state, TokenKind::l_false))
+		return std::unique_ptr<ValueNode>{new BooleanValueNode{false}};
 
 	throw_parse_error(state, std::string{"Expected value, got "} + to_cstr(state.tok.kind));
 }
@@ -706,4 +722,3 @@ std::vector<Spec> parse_spec_list(ParseState &parser, SymbolTable &table)
 
 	return specs;
 }
-

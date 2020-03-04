@@ -76,7 +76,6 @@ public:
 		return m_objects;
 	}
 
-	// TODO Optimize
 	bool merge(AbstractAddress const &other)
 	{
 		if(other.is_unknown())
@@ -273,7 +272,6 @@ LocationSet parse_location_set(lex_statet &lexer)
 	bool closed = false;
 	while(lexer)
 	{
-		skip_whitespaces(lexer);
 		if(match_skip_ws(lexer, "]"))
 		{
 			closed = true;
@@ -281,10 +279,8 @@ LocationSet parse_location_set(lex_statet &lexer)
 		}
 
 		loc_set.insert(parse_linear_location_set(lexer));
-		skip_whitespaces(lexer);
 		if(!match_skip_ws(lexer, ","))
 		{
-			skip_whitespaces(lexer);
 			accept_skip_ws(lexer, "]");
 			closed = true;
 			break;
@@ -541,7 +537,7 @@ void run_pointer_analysis(std::string const &filename)
 	Function *func = module.get_main_func();
 
 	boolbv_widtht boolbv_width{module.ns()};
-	ContextSensitiveCallAnalyzer ca{boolbv_width};
+	PAContextSensitiveCallAnalyzer ca{boolbv_width};
 	CallPath cp;
 	PointsToMap actual_pt = pointer_analysis(cp, func, {}, &ca);
 

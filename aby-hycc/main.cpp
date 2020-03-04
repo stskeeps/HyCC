@@ -76,7 +76,7 @@ Options parse_options(int32_t argc, char** argv)
 
 		// Port, default: 7766
 		else if(strcmp(argv[i], "-q") == 0)
-			opts.quite = true;
+			opts.quiet = true;
 		// Specify input values
 		else if(strcmp(argv[i], "--spec") == 0)
 		{
@@ -140,7 +140,7 @@ int main(int argc, char** argv)
 	default_logger().add_target<default_log_targett>();
 
 	Options opts = parse_options(argc, argv);
-	if(opts.quite)
+	if(opts.quiet)
 		default_logger().level(log_levelt::warning);
 
 	if(opts.boolean_sharing == S_YAO)

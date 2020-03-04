@@ -1,14 +1,15 @@
 #pragma once
 
-#include "spec.hpp"
 #include "circuit.hpp"
+
+#include <libcircuit/runner.h>
 
 
 namespace circ {
 
 //==================================================================================================
 SymbolTable create_symbol_table(Circuit const &c);
-Context create_context(circ::Circuit const &circuit);
+EvaluationContext create_context(circ::Circuit const &circuit);
 
 
 //==================================================================================================

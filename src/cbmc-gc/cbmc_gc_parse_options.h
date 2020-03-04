@@ -62,7 +62,8 @@ class optionst;
   "(floatbv)(all-claims)(all-properties)" /* legacy, and will eventually disappear */ \
   /* CBMC-GC */ \
   "(low-depth)(low-depth-bb)(low-depth-expr)(abc)(no-minimization)(minimization-time-limit):" \
-  "(compile-options)(dot):(merge)(arith):(bool):(all-variants)(test-pointer-analysis)"
+  "(compile-options)(dot):(merge)(arith):(bool):(all-variants)(test-pointer-analysis)" \
+  "(outline)"
 
 class cbmc_gc_parse_optionst:
   public parse_options_baset,

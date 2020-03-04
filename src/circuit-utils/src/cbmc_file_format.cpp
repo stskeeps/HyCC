@@ -181,6 +181,13 @@ Type read_type(RawReader &rr)
 
 			return strukt;
 		}
+		case 5:
+		{
+			if(length != 1)
+				throw std::runtime_error{"The bit-width of a boolean must be one"};
+
+			return BoolType{};
+		}
 		default:
 			throw std::runtime_error{"Unknown type: " + std::to_string(type_id)};
 	}

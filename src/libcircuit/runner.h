@@ -19,44 +19,15 @@
 
 
 //==================================================================================================
-inline StructType const* get_struct_type(Type const &t)
-{
-	if(t.kind() == TypeKind::structure)
-		return &t.structure();
-
-	return nullptr;
-}
-
-inline ArrayType const* get_array_type(Type const &t)
-{
-	if(t.kind() == TypeKind::array)
-		return &t.array();
-
-	return nullptr;
-}
-
-inline IntegerType const* get_integer_type(Type const &t)
-{
-	if(t.kind() == TypeKind::integer)
-		return &t.integer();
-
-	return nullptr;
-}
-
-inline BitsType const* get_bits_type(Type const &t)
-{
-	if(t.kind() == TypeKind::bits)
-		return &t.bits();
-
-	return nullptr;
-}
-
 inline Type const& get_leaf_type(Type const &t)
 {
 	switch(t.kind())
 	{
-		case TypeKind::bits: return t;
-		case TypeKind::integer: return t;
+		case TypeKind::bits:
+		case TypeKind::boolean:
+		case TypeKind::integer:
+			return t;
+
 		case TypeKind::array: return get_leaf_type(*t.array().sub);
 		case TypeKind::structure: return t;
 	}
@@ -68,8 +39,11 @@ inline Type& get_leaf_type(Type &t)
 {
 	switch(t.kind())
 	{
-		case TypeKind::bits: return t;
-		case TypeKind::integer: return t;
+		case TypeKind::bits:
+		case TypeKind::boolean:
+		case TypeKind::integer:
+			return t;
+
 		case TypeKind::array: return get_leaf_type(*t.array().sub);
 		case TypeKind::structure: return t;
 	}
@@ -84,8 +58,11 @@ inline bool array_sizes_equal(Type const &a, Type const &b)
 
 	switch(a.kind())
 	{
-		case TypeKind::bits: return true;
-		case TypeKind::integer: return true;
+		case TypeKind::bits:
+		case TypeKind::boolean:
+		case TypeKind::integer:
+			return true;
+
 		case TypeKind::array:
 			return a.array().length == b.array().length && array_sizes_equal(*a.array().sub, *b.array().sub);
 		case TypeKind::structure: return a == b;
@@ -97,26 +74,6 @@ inline bool array_sizes_equal(Type const &a, Type const &b)
 inline Type make_array_type(Type &&sub, int length)
 {
 	return Type{ArrayType{std::move(sub), length}};
-}
-
-inline int get_bit_width(Type const &t)
-{
-	switch(t.kind())
-	{
-		case TypeKind::bits: return t.bits().width;
-		case TypeKind::integer: return t.integer().width;
-		case TypeKind::array: return t.array().length * get_bit_width(*t.array().sub);
-		case TypeKind::structure:
-		{
-			int width = 0;
-			for(auto const &sub: t.structure().members)
-				width += get_bit_width(*sub.second);
-
-			return width;
-		}
-	}
-
-	assert(0);
 }
 
 optional<IntegerType> common_int_type(IntegerType a, IntegerType b);
@@ -141,6 +98,14 @@ inline void to_c_decl_impl(Type const &t, std::string &out, optional<std::string
 		case TypeKind::bits:
 		{
 			throw std::runtime_error{"Converting bits to C type no supported yet"};
+		} break;
+
+		case TypeKind::boolean:
+		{
+			std::string s = "_Bool";
+			if(name)
+				s += ' ' + *name;
+			out += s;
 		} break;
 
 		case TypeKind::integer:
@@ -194,6 +159,61 @@ using MaxScalar = int64_t;
 
 using RawValue = std::vector<uint8_t>;
 
+class RawValueWriter
+{
+public:
+	RawValueWriter() :
+		m_bits_written{0} {}
+
+	void write_byte(uint8_t byte)
+	{
+		auto bit_offset = m_bits_written % 8;
+		if(bit_offset == 0)
+			m_value.push_back(byte);
+		else
+		{
+			// We can use OR to set the bits because unused bits are always zero
+			m_value.back() |= byte << bit_offset;
+			m_value.push_back(byte >> bit_offset);
+		}
+
+		m_bits_written += 8;
+	}
+
+	void write_bit(bool bit)
+	{
+		auto bit_offset = m_bits_written % 8;
+		if(bit_offset == 0)
+			m_value.push_back(bit);
+		else
+		{
+			// We can use OR to set the bits because unused bits are always zero
+			m_value.back() |= (uint8_t)bit << bit_offset;
+		}
+
+		m_bits_written += 1;
+	}
+
+	void write_all(RawValueWriter const &other)
+	{
+		auto num_bytes = other.bits_written() / 8;
+		for(size_t i = 0; i < num_bytes; ++i)
+			write_byte(other.m_value[i]);
+
+		auto bit_offset = other.bits_written() % 8;
+		for(size_t i = 0; i < bit_offset; ++i)
+			write_bit((other.m_value.back() >> i) & 1);
+	}
+
+	size_t bits_written() const { return m_bits_written; }
+
+	RawValue&& finalize() { return std::move(m_value); }
+
+private:
+	RawValue m_value;
+	size_t m_bits_written;
+};
+
 // Large enough to store any number we care for.
 struct Number
 {
@@ -231,18 +251,15 @@ inline bool operator >= (Number a, Number b)
 
 IntegerType find_closest_type(Number n);
 
-inline size_t get_num_bytes(Type const &t)
-{
-	// Round up.
-	return (get_bit_width(t) + 7) / 8;
-}
-
 inline int get_num_elements(Type const &t)
 {
 	switch(t.kind())
 	{
 		case TypeKind::bits:
-		case TypeKind::integer: return 1;
+		case TypeKind::boolean:
+		case TypeKind::integer:
+			return 1;
+
 		case TypeKind::array: return t.array().length * get_num_elements(*t.array().sub);
 		case TypeKind::structure: return 1;
 	}
@@ -344,8 +361,12 @@ inline bool is_representable(Type const &t, TypedValue const &val)
 	auto dest_elem_type = get_leaf_type(t);
 	auto src_elem_type = get_leaf_type(val.type);
 
+	// Booleans could be converted to both bits and integers without loosing information
 	if(src_elem_type.kind() != dest_elem_type.kind())
 		return false;
+
+	if(src_elem_type.kind() == TypeKind::boolean)
+		return true;
 
 	if(src_elem_type.kind() == TypeKind::bits)
 		return get_bit_width(src_elem_type) <= dest_elem_type.bits().width;
@@ -391,7 +412,7 @@ void for_each_bit(TypedValue const &val, Func &&func)
 	auto num_complete_bytes = bit_width / 8;
 	auto num_rest_bits = bit_width % 8;
 
-	for(int i = 0; i < num_complete_bytes; ++i)
+	for(size_t i = 0; i < num_complete_bytes; ++i)
 	{
 		auto cur_byte = val.value[i];
 		for(int k = 0; k < 8; ++k)
@@ -399,7 +420,7 @@ void for_each_bit(TypedValue const &val, Func &&func)
 	}
 
 	auto last_byte = val.value.back();
-	for(int k = 0; k < num_rest_bits; ++k)
+	for(size_t k = 0; k < num_rest_bits; ++k)
 		func(num_complete_bytes * 8 + k, (last_byte >> k) & 1);
 }
 
@@ -508,7 +529,7 @@ inline TypedValue convert(Type const &t, TypedValue const &val)
 		result.value.resize(elem_count * dest_elem_size);
 		for(int i = 0; i < elem_count; ++i)
 		{
-			for(int k = 0; k < elem_size; ++k)
+			for(size_t k = 0; k < elem_size; ++k)
 				result.value[i * dest_elem_size + k] = val.value[i * src_elem_size + k];
 
 			if(sign_bit_pos)
@@ -530,6 +551,14 @@ inline TypedValue make_value(Number value, Type type)
 	uint8_t const *p = (uint8_t const*)&value.value;
 	for(int i = 0; i < width / 8; ++i)
 		vs.value[i] = p[i];
+
+	return vs;
+}
+
+inline TypedValue make_value(bool value)
+{
+	TypedValue vs{Type{BoolType{}}};
+	vs.value[0] = value;
 
 	return vs;
 }
@@ -574,6 +603,11 @@ inline std::ostream& print_dim(std::ostream &os, TypedValue const &ival, Type co
 		std::stringstream ss; ss << std::bitset<64>(bits);
 		auto str = ss.str();
 		os << str.substr(str.length() - it->width);
+	}
+	else if(cur_type.kind() == TypeKind::boolean)
+	{
+		bool val = extract_bits(ival.value, cur_idx++, 1);
+		os << (val ? "true" : "false");
 	}
 
 	return os;
@@ -1105,6 +1139,8 @@ enum class TokenKind
 
 	l_and,
 	l_or,
+	l_true,
+	l_false,
 
 	global,
 	spec,
@@ -1204,7 +1240,7 @@ public:
 class ValueNode : public ExpressionNode
 {
 public:
-	virtual void to_value(Type const &type, RawValue &value) = 0;
+	virtual void to_value(Type const &type, RawValueWriter &value) = 0;
 };
 
 
@@ -1214,7 +1250,7 @@ public:
 	IntegerValueNode(Number val) :
 		m_value{val} {}
 
-	virtual void to_value(Type const &type_constraint, RawValue &value) override
+	virtual void to_value(Type const &type_constraint, RawValueWriter &value) override
 	{
 		if(auto int_type = get_integer_type(type_constraint))
 		{
@@ -1222,7 +1258,7 @@ public:
 			{
 				auto p = (uint8_t const*)&m_value.value;
 				for(int i = 0; i < int_type->width / 8; ++i)
-					value.push_back(p[i]);
+					value.write_byte(p[i]);
 
 				return;
 			}
@@ -1253,13 +1289,44 @@ private:
 };
 
 
+class BooleanValueNode : public ValueNode
+{
+public:
+	BooleanValueNode(bool val) :
+		m_value{val} {}
+
+	virtual void to_value(Type const &type_constraint, RawValueWriter &value) override
+	{
+		if(type_constraint.kind() != TypeKind::boolean)
+			throw std::runtime_error{std::string{"Value '"} + (m_value?"true":"false") + "' not representable by type " + to_str(type_constraint)};
+
+		value.write_bit(m_value);
+	}
+
+	virtual std::unique_ptr<DomainExpr> to_domain_expr(SymbolTable const &table, optional<Type> const &type_constraint) override
+	{
+		(void)table;
+		if(type_constraint)
+		{
+			if(type_constraint->kind() != TypeKind::boolean)
+				throw std::runtime_error{std::string{"Value '"} + (m_value?"true":"false") + "' not representable by type " + to_str(*type_constraint)};
+		}
+
+		return std::unique_ptr<DomainExpr>{new ValueExpr{make_value(m_value)}};
+	}
+
+private:
+	bool m_value;
+};
+
+
 class ArrayValueNode : public ValueNode
 {
 public:
 	ArrayValueNode(std::vector<std::unique_ptr<ValueNode>> &&vals) :
 		m_values{std::move(vals)} {}
 
-	virtual void to_value(Type const &type_constraint, RawValue &value) override
+	virtual void to_value(Type const &type_constraint, RawValueWriter &value) override
 	{
 		if(auto array_type = get_array_type(type_constraint))
 		{
@@ -1285,9 +1352,9 @@ public:
 		if(!type_constraint)
 			throw std::runtime_error{"Arrays require type constraints"};
 
-		RawValue val;
+		RawValueWriter val;
 		to_value(*type_constraint, val);
-		TypedValue val_spec{Type{*type_constraint}, std::move(val)};
+		TypedValue val_spec{Type{*type_constraint}, val.finalize()};
 
 		return std::unique_ptr<DomainExpr>{new ValueExpr{std::move(val_spec)}};
 	}
@@ -1305,22 +1372,20 @@ public:
 	StructValueNode(StructValue &&vals) :
 		m_value{std::move(vals)} {}
 
-	virtual void to_value(Type const &type_constraint, RawValue &value) override
+	virtual void to_value(Type const &type_constraint, RawValueWriter &value) override
 	{
 		if(auto struct_type = get_struct_type(type_constraint))
 		{
 			if(struct_type->members.size() == m_value.size())
 			{
-				RawValue new_value;
 				for(size_t i = 0; i < struct_type->members.size(); ++i)
 				{
 					auto const &member_name = struct_type->members[i].first;
 					if(member_name != m_value[i].first)
 						throw std::runtime_error{"Expected struct member " + member_name + ", got " + m_value[i].first};
 
-					m_value[i].second->to_value(*struct_type->members[i].second, new_value);
+					m_value[i].second->to_value(*struct_type->members[i].second, value);
 				}
-				value.insert(value.end(), new_value.begin(), new_value.end());
 
 				return;
 			}
@@ -1336,9 +1401,9 @@ public:
 		if(!type_constraint)
 			throw std::runtime_error{"Structs require type constraints"};
 
-		RawValue val;
+		RawValueWriter val;
 		to_value(*type_constraint, val);
-		TypedValue val_spec{Type{*type_constraint}, std::move(val)};
+		TypedValue val_spec{Type{*type_constraint}, val.finalize()};
 
 		return std::unique_ptr<DomainExpr>{new ValueExpr{std::move(val_spec)}};
 	}
@@ -1435,4 +1500,3 @@ std::unique_ptr<ExpressionNode> parse_cast_expr(ParseState &parser);
 std::unique_ptr<ExpressionNode> parse_domain_expr(ParseState &parser);
 Spec parse_spec(ParseState &parser, SymbolTable &table);
 std::vector<Spec> parse_spec_list(ParseState &parser, SymbolTable &table);
-

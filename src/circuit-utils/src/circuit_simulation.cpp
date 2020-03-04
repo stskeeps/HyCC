@@ -16,11 +16,11 @@ SymbolTable create_symbol_table(Circuit const &c)
 	return table;
 }
 
-Context create_context(Circuit const &circuit)
+EvaluationContext create_context(Circuit const &circuit)
 {
 	// Pre-define input and output variables
 
-	Context ctx;
+	EvaluationContext ctx;
 	for(auto &input: circuit.name_to_inputs)
 		ctx.add(input.first) = TypedValue{Type{input.second.type}};
 

@@ -2,6 +2,7 @@
 
 #include <vector>
 #include <unordered_map>
+#include <fstream>
 
 #include "reaching_definitions.h"
 #include <libcircuit/sorted_vector.h>
@@ -11,6 +12,8 @@
 
 
 namespace ir {
+
+class PointsToMap;
 
 
 //==================================================================================================
@@ -70,6 +73,11 @@ inline bool is_data(PDGEdge const &edge)
 	return edge.kind == DependenceKind::data;
 }
 
+inline bool is_control(PDGEdge const &edge)
+{
+	return edge.kind == DependenceKind::control;
+}
+
 inline bool operator < (PDGEdge const &a, PDGEdge const &b)
 {
 	return std::tie(a.kind, a.target, a.variable, a.dep_region, a.preserves_dep_region) <
@@ -96,9 +104,32 @@ inline PDGEdge control_edge(PDGNode const *target)
 //==================================================================================================
 class Function;
 class Instr;
+class ProgramDependenceGraph;
 
 template<typename T>
 using UniqueSortedVector = sorted_vector<T, true>;
+
+struct PDGInput
+{
+	ProgramDependenceGraph const *pdg;
+	PDGNode const *node;
+};
+
+enum class PDGNodeKind
+{
+	// Every PDG has exactly one entry node. Conceptually, it represents the condition under which
+	// the function is executed. Thus, all internal node in the PDG are control-dependent on the
+	// entry node.
+	entry,
+
+	// An input node refers to a node in another PDG.
+	input,
+
+	// An internal node represents an instruction in the function that is modeled by the PDG.
+	internal,
+
+	return_val,
+};
 
 struct PDGNode
 {
@@ -106,45 +137,125 @@ struct PDGNode
 		instr{nullptr} {}
 
 	explicit PDGNode(Instr const *instr) :
-		instr{instr} {}
+		kind{PDGNodeKind::internal},
+		instr{instr},
+		input{} {}
 
-	Instr const *instr;
+	explicit PDGNode(PDGInput in) :
+		kind{PDGNodeKind::input},
+		instr{},
+		input{in} {}
 
+	PDGNodeKind kind;
 	UniqueSortedVector<PDGEdge> fanins;
 	UniqueSortedVector<PDGEdge> fanouts;
+
+	bool is_entry() const { return kind == PDGNodeKind::entry; }
+	bool is_input() const { return kind == PDGNodeKind::input; }
+	bool is_internal() const { return kind == PDGNodeKind::internal; }
+
+	// Either
+	Instr const *instr;
+	// or
+	PDGInput input;
 };
+
+inline std::ostream& print(std::ostream &os, PDGNode const &node, InstrNameMap &names)
+{
+	switch(node.kind)
+	{
+		case PDGNodeKind::entry:
+			os << "ENTRY";
+			break;
+
+		case PDGNodeKind::input:
+			os << "Input: ";
+			print(os, *node.input.node, names);
+			break;
+
+		case PDGNodeKind::internal:
+			node.instr->print_inline(os, names);
+			break;
+	}
+
+	return os;
+}
+
+inline PDGNode entry_node()
+{
+	PDGNode n;
+	n.kind = PDGNodeKind::entry;
+	return n;
+}
 
 
 //==================================================================================================
 class ProgramDependenceGraph
 {
 public:
-	explicit ProgramDependenceGraph(Function const *func) :
-		m_func{func} {}
+	ProgramDependenceGraph() :
+		m_nodes{entry_node()} {}
 
-	PDGNode const* node(Instr const *instr)
+	ProgramDependenceGraph(ProgramDependenceGraph const&) = delete;
+	ProgramDependenceGraph(ProgramDependenceGraph &&) = default;
+
+	PDGNode const* get_or_create_node(Instr const *instr)
 	{
-		auto res = m_nodes.insert({instr, PDGNode{instr}});
-		return &res.first->second;
+		if(auto *n = find_node(instr))
+			return n;
+
+		m_nodes.emplace_back(instr);
+		m_instr_to_node.insert({instr, &m_nodes.back()});
+		return &m_nodes.back();
 	}
 
-	PDGNode const* node(Instr const *instr) const
+	PDGNode const* get_node(Instr const *instr) const
 	{
-		return &m_nodes.at(instr);
+		return m_instr_to_node.at(instr);
 	}
 
-	void add_data_dep(PDGNode const *node, PDGNode const *dep, Decl *variable, Region dep_region, bool preserves_dep_region)
+	PDGNode const* get_entry_node() const
+	{
+		return &m_nodes.front();
+	}
+
+	PDGNode const* find_node(Instr const *instr) const
+	{
+		auto it = m_instr_to_node.find(instr);
+		if(it == m_instr_to_node.end())
+			return nullptr;
+
+		return it->second;
+	}
+
+	PDGNode const* create_input_node(PDGInput const &in)
+	{
+		m_nodes.emplace_back(in);
+		return &m_nodes.back();
+	}
+
+	bool add_data_dep(PDGNode const *node, PDGNode const *dep, Decl *variable, Region dep_region, bool preserves_dep_region)
 	{
 		// We assume that both `node` and `dep` were obtained via a call to `node()`, so the
-		// const-casts should be okay.
-		const_cast<PDGNode*>(node)->fanins.insert(data_edge(dep, variable, dep_region, preserves_dep_region));
-		const_cast<PDGNode*>(dep)->fanouts.insert(data_edge(node, variable, dep_region, preserves_dep_region));
+		// const-casts should be safe.
+		bool changed = const_cast<PDGNode*>(node)->fanins.insert(
+			data_edge(dep, variable, dep_region, preserves_dep_region)
+		).second;
+
+		if(changed)
+			const_cast<PDGNode*>(dep)->fanouts.insert(data_edge(node, variable, dep_region, preserves_dep_region));
+
+		return changed;
 	}
 
-	void add_control_dep(PDGNode const *node, PDGNode const *dep)
+	bool add_control_dep(PDGNode const *node, PDGNode const *dep)
 	{
-		const_cast<PDGNode*>(node)->fanins.insert(control_edge(dep));
-		const_cast<PDGNode*>(dep)->fanouts.insert(control_edge(node));
+		bool changed = const_cast<PDGNode*>(node)->fanins.insert(control_edge(dep)).second;
+
+		if(changed)
+			const_cast<PDGNode*>(dep)->fanouts.insert(control_edge(node));
+
+		return changed;
 	}
 
 	bool add_deps(PDGNode const *node, UniqueSortedVector<PDGEdge> const &new_deps)
@@ -154,19 +265,96 @@ public:
 		return old_fanin_count != node->fanins.size();
 	}
 
-	std::unordered_map<Instr const*, PDGNode> const& nodes() const { return m_nodes; }
-
-	void print(std::ostream &os, InstrNameMap &names) const;
+	std::list<PDGNode> const& nodes() const { return m_nodes; }
 
 private:
-	std::unordered_map<Instr const*, PDGNode> m_nodes;
-	Function const *m_func;
+	std::list<PDGNode> m_nodes;
+	std::unordered_map<Instr const*, PDGNode*> m_instr_to_node;
 };
 
 
-ProgramDependenceGraph create_pdg(
-	Function const *func,
-	ReachingDefinitions const &rd,
-	PointsToMap const &pt);
+void print(Function const *func, ProgramDependenceGraph const &pdg, InstrNameMap &names, std::ostream &os);
+
+
+// By abstracting how to analyze function calls we can implement various
+// degrees of context-sensitivity.
+class PDGCallAnalyzer
+{
+public:
+	PDGCallAnalyzer(RDCallAnalyzer const *rd, boolbv_widtht const &bv) :
+		m_rd{rd},
+		m_boolbv_width{bv} {}
+
+	virtual ProgramDependenceGraph const& result_for(CallPath const &cp) const = 0;
+	virtual ProgramDependenceGraph& get_or_create_pdg(CallPath const &cp) = 0;
+
+	virtual void analyze_entry_point(Function const *main) = 0;
+
+	// TODO This is totally out of place here. Move somewhere else.
+	boolbv_widtht const& boolbv_width() const { return m_boolbv_width; }
+
+	RDCallAnalyzer const* rd() const { return m_rd; }
+
+private:
+	RDCallAnalyzer const *m_rd;
+	boolbv_widtht const &m_boolbv_width;
+};
+
+
+//==================================================================================================
+class PDGContextSensitiveCallAnalyzer : public PDGCallAnalyzer
+{
+public:
+	struct CallInfo
+	{
+		CallInfo(CallPath const &cp, Function const *callee) :
+			cp{cp},
+			callee{callee},
+			pdg{} {}
+
+		CallPath cp;
+		Function const *callee;
+		ProgramDependenceGraph pdg;
+	};
+
+	PDGContextSensitiveCallAnalyzer(PACallAnalyzer *pa, RDCallAnalyzer const *rd, boolbv_widtht const &bv) :
+		PDGCallAnalyzer{rd, bv},
+		m_pa{pa} {}
+
+	ProgramDependenceGraph const& result_for(CallPath const &cp) const override
+	{
+		auto it = m_call_info.find(cp);
+		if(it == m_call_info.end())
+			throw std::runtime_error{"No PDG available"};
+
+		return it->second.pdg;
+	}
+
+	ProgramDependenceGraph& get_or_create_pdg(CallPath const &cp) override
+	{
+		auto it = m_call_info.find(cp);
+		if(it == m_call_info.end())
+		{
+			Function *f = try_get_func_decl(cp.back())->function();
+			if(not f)
+				throw std::runtime_error{"Function pointers not supported yet"};
+
+			it = m_call_info.emplace(cp, CallInfo{cp, f}).first;
+			m_outstanding.insert({cp, &it->second});
+		}
+
+		return it->second.pdg;
+	}
+
+	void analyze_entry_point(Function const *main) override;
+
+	void to_dot(std::ostream &os, InstrNameMap &names) const;
+	void print(std::ostream &os, InstrNameMap &names) const;
+
+private:
+	std::unordered_map<CallPath, CallInfo, VectorHash> m_call_info;
+	std::unordered_map<CallPath, CallInfo*, VectorHash> m_outstanding;
+	PACallAnalyzer *m_pa;
+};
 
 }

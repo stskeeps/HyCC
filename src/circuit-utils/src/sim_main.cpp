@@ -7,9 +7,6 @@
 #include <fstream>
 
 
-using circ::optional;
-using circ::nullopt;
-
 struct Options
 {
 	std::string circuit_path = ".";
@@ -27,14 +24,14 @@ std::string drain_stream(std::istream &is)
 	return ss.str();
 }
 
-std::vector<circ::Spec> create_specs(circ::Circuit const &c, Options const &opts)
+std::vector<Spec> create_specs(circ::Circuit const &c, Options const &opts)
 {
-	circ::SymbolTable table = create_symbol_table(c);
-	std::vector<circ::Spec> specs;
+	SymbolTable table = create_symbol_table(c);
+	std::vector<Spec> specs;
 	if(opts.spec_inline)
 	{
-		circ::ParseState parser{opts.spec_inline->c_str(), "<command-line-spec>"};
-		auto inline_specs = circ::parse_spec_list(parser, table);
+		ParseState parser{opts.spec_inline->c_str(), "<command-line-spec>"};
+		auto inline_specs = parse_spec_list(parser, table);
 
 		for(auto &s: inline_specs)
 			specs.push_back(std::move(s));
@@ -47,8 +44,8 @@ std::vector<circ::Spec> create_specs(circ::Circuit const &c, Options const &opts
 			throw std::runtime_error{"Filed to open spec file"};
 		
 		auto source = drain_stream(f);
-		circ::ParseState parser{source.c_str(), *opts.spec_file};
-		auto file_specs = circ::parse_spec_list(parser, table);
+		ParseState parser{source.c_str(), *opts.spec_file};
+		auto file_specs = parse_spec_list(parser, table);
 
 		for(auto &s: file_specs)
 			specs.push_back(std::move(s));
@@ -92,12 +89,12 @@ Options parse_options(int argc, char *argv[])
 	return opts;
 }
 
-bool inputs_are_specified(circ::Context &ctx)
+bool inputs_are_specified(EvaluationContext &ctx)
 {
 	int num_inputs = 0;
 	int num_inputs_set = 0;
 
-	ctx.for_each_variable([&](std::string const &name, optional<circ::TypedValue> const &val)
+	ctx.for_each_variable([&](std::string const &name, optional<TypedValue> const &val)
 	{
 		if(name.compare(0, 6, "INPUT_") == 0)
 		{
@@ -138,7 +135,7 @@ int main(int argc, char *argv[])
 			//if(inputs_are_specified(ctx))
 			{
 				// Set inputs
-				std::unordered_map<std::string, circ::TypedValue> input_values;
+				std::unordered_map<std::string, TypedValue> input_values;
 				for(auto const &input: circuit.name_to_inputs)
 					input_values[input.first] = *ctx.get(input.first);
 
@@ -147,8 +144,8 @@ int main(int argc, char *argv[])
 				for(auto const &output: circuit.name_to_outputs)
 				{
 					auto &output_spec = ctx.get(output.first).value();
-					auto bit_width_in_circuit = bit_width(output.second.type);
-					auto bit_width_of_var = bit_width(output_spec.type);
+					auto bit_width_in_circuit = get_bit_width(output.second.type);
+					auto bit_width_of_var = get_bit_width(output_spec.type);
 					if(bit_width_in_circuit != bit_width_of_var)
 					{
 						throw std::runtime_error{

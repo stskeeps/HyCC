@@ -128,7 +128,7 @@ void convolution_naive(DT *image, DT* kernel, DT* OUTPUT_layer, unsigned image_w
 {
 	unsigned window_unrolled = window_size * window_size;
 	// Need to assign each input pixel to the convolution matrix
-	unsigned x, y, wx, wy;
+	unsigned x, y, wx=0, wy;
 	for(y = 0; y < conv_width; y++) { // Inner position in the image
 		for(x = 0; x < conv_width; x++) {
 			unsigned oPos = x+y*conv_width;
@@ -315,7 +315,7 @@ void test(InputA *pINPUT_A, InputB *pINPUT_B, Output *res)
 	}
 }
 
-void main() {
+int main() {
 	InputB testB;
 	memsetInt(testB.kernelsL1, 1, OUTPUT_CHANNELS * WINDOW_WIDTH * WINDOW_WIDTH); // (1)
 	memsetInt(testB.pool_layer,0, FULLY_CONNECTED_WIDTH * SIZE_CONVOLUTION * OUTPUT_CHANNELS);

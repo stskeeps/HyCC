@@ -9,7 +9,7 @@ using gate_valuest = std::unordered_map<simple_circuitt::gatet::wire_endpointt, 
 
 void set_input_value(simple_circuitt::variablet &var, TypedValue const &value, gate_valuest &gate_values)
 {
-  assert(bit_width(value.type) == bit_width(var.type));
+  assert(get_bit_width(value.type) == get_bit_width(var.type));
 
   int bit_idx = 0;
   for(auto *gate: var.gates)
@@ -19,7 +19,7 @@ void set_input_value(simple_circuitt::variablet &var, TypedValue const &value, g
     bit_idx += gate->get_width();
   }
 
-  assert(bit_idx == bit_width(var.type));
+  assert(bit_idx == get_bit_width(var.type));
 }
 
 TypedValue get_output_value(simple_circuitt::variablet &var, gate_valuest const &gate_values)

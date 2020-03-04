@@ -192,7 +192,7 @@ bool pointer_analysis(CallPath &cp, Instr const *instr, PointsToMap &pt, PACallA
 		{
 			CallInstr const *call = static_cast<CallInstr const*>(instr);
 			cp.push_back(call);
-			return ca->analyze(cp, pt);
+			return ca->analyze_call(cp, pt);
 		}
 
 		case InstrKind::phi:
@@ -310,7 +310,7 @@ std::ostream& operator << (std::ostream &os, CallPath const &cp)
 	return os;
 }
 
-bool ContextSensitiveCallAnalyzer::analyze(
+bool PAContextSensitiveCallAnalyzer::analyze_call(
 	CallPath &cp,
 	PointsToMap &pt_caller)
 {
@@ -366,7 +366,7 @@ bool ContextSensitiveCallAnalyzer::analyze(
 
 
 //==================================================================================================
-bool ContextInsensitiveCallAnalyzer::analyze(
+bool PAContextInsensitiveCallAnalyzer::analyze_call(
 	CallPath &cp,
 	PointsToMap &pt_caller)
 {

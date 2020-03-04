@@ -1,5 +1,7 @@
 #include <circuit-utils/circuit_io.hpp>
 
+#include <libcircuit/type.h>
+
 
 namespace circ {
 
@@ -53,6 +55,7 @@ static void create_input_gates_for_var(std::ostream &os, Circuit const &circ, Ty
 	switch(type.kind())
 	{
 		case TypeKind::integer:
+		case TypeKind::boolean:
 		case TypeKind::bits:
 		{
 			size_t total_width = get_bit_width(type);
@@ -85,7 +88,7 @@ static void create_input_gates_for_var(std::ostream &os, Circuit const &circ, Ty
 				// CBMC inserts special $pad members for padding if necessary. They are usually not
 				// accessed so we ignore them. (This makes things easier since they usually have a
 				// bit-width not natively supported by C.)
-				if(starts_with<char const>(m.first.c_str(), "$pad"))
+				if(starts_with(m.first, "$pad"))
 				{
 					ignore_inputs(circ, inputs, idx, get_bit_width(*m.second));
 					continue;
@@ -143,6 +146,7 @@ static void assign_gates_to_out_var(std::ostream &os, Circuit const &circ, Type 
 	switch(type.kind())
 	{
 		case TypeKind::integer:
+		case TypeKind::boolean:
 		case TypeKind::bits:
 		{
 			size_t total_width = get_bit_width(type);
@@ -191,10 +195,7 @@ static void zero_output_variables(std::ostream &os, Circuit const &circ)
 	for(auto const &pair: circ.name_to_outputs)
 	{
 		auto const &name = pair.first;
-		auto const &info = pair.second;
-		auto num_bits = get_bit_width(info.type);
-		assert(num_bits % 8 == 0);
-		os << "\tmemset(&" << name << ", 0, " << (num_bits / 8) << ");\n";
+		os << "\tmemset(&" << name << ", 0, sizeof(" << name << "));\n";
 	}
 }
 

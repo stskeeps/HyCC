@@ -25,11 +25,8 @@ namespace ir {
 //==================================================================================================
 inline Instr* create_lnot(Instr *operand, BasicBlock *bb)
 {
-	Function *func = bb->function();
-	Instr *lnot = new Instr{InstrKind::eq, operand->type(), bb};
+	Instr *lnot = new Instr{InstrKind::l_not, operand->type(), bb};
 	lnot->add_operand(operand);
-	lnot->add_operand(func->get_constant(0, operand->type()));
-
 	return lnot;
 }
 
@@ -50,7 +47,7 @@ inline void to_dot(
 		BasicBlock const *post_idom = post_idom_tree.get_idom(b);
 		os << "\t" << b->id() << " [shape=box,label=\""
 		   << "ID=" << b->id()
-		   << ", PostIDom=" << post_idom->id()
+		   << ", PostIDom=" << (post_idom ? std::to_string(post_idom->id()) : "n/a")
 		   << "\\l";
 
 		os << "\\l";

@@ -34,6 +34,8 @@ Type from_cbmc(typet const &cbmc_type)
     return IntegerType{true, cbmc_type.get_int("width")};
   else if(cbmc_type.id() == ID_unsignedbv)
     return IntegerType{false, cbmc_type.get_int("width")};
+  else if(cbmc_type.id() == ID_c_bool)
+    return BoolType{};
   else
   {
     std::cout << cbmc_type.pretty() << std::endl;

@@ -9,6 +9,7 @@
 #include <libcircuit/utils.h>
 
 #include <unordered_set>
+#include <map>
 
 
 namespace ir {
@@ -18,22 +19,37 @@ enum class InstrKind
 {
 	constant,
 	output,
+	dead,
 
 	// Arithmetic operations
 	add,
 	sub,
 	mul,
 	div,
+	mod,
+
+	// Unary Negative (-)
+	unary_neg,
 
 	// Bitwise operations
 	b_and,
+	b_xor,
 	b_or,
 	b_not,
 	lshr, // Logical shift right
+	ashr,
+	shl,
+
+	// Logical operations
+	l_not,
+	l_and,
+	l_or,
 
 	// Comparison operations
 	lt,
+	le,
 	gt,
+	ge,
 	eq,
 
 	call,
@@ -55,6 +71,7 @@ enum class InstrKind
 	phi,
 
 	nondet,
+	nop,
 };
 
 char const* cstr(InstrKind kind);
@@ -64,6 +81,35 @@ inline bool is_jump(InstrKind kind)
 	return kind == InstrKind::jump || kind == InstrKind::branch;
 }
 
+const std::map<irep_idt, InstrKind> simple_operations = {
+	{ID_plus, InstrKind::add},
+	{ID_minus, InstrKind::sub},
+	{ID_mult, InstrKind::mul},
+	{ID_div, InstrKind::div},
+	{ID_mod, InstrKind::mod},
+
+	{ID_unary_minus, InstrKind::unary_neg},
+
+	{ID_typecast, InstrKind::cast},
+	{ID_array, InstrKind::combine},
+
+	{ID_lt, InstrKind::lt},
+	{ID_le, InstrKind::le},
+	{ID_gt, InstrKind::gt},
+	{ID_ge, InstrKind::ge},
+	{ID_equal, InstrKind::eq},
+
+	{ID_and, InstrKind::l_and},
+	{ID_or, InstrKind::l_or},
+	{ID_not, InstrKind::l_not}, // Also used for notequal!
+	{ID_bitand, InstrKind::b_and},
+	{ID_bitor, InstrKind::b_or},
+	{ID_bitxor, InstrKind::b_xor},
+	{ID_bitnot, InstrKind::b_not},
+	{ID_lshr, InstrKind::lshr},
+	{ID_ashr, InstrKind::ashr},
+	{ID_shl, InstrKind::shl},
+};
 
 //==================================================================================================
 class BasicBlock;
@@ -92,7 +138,7 @@ public:
 	InstrKind kind() const { return m_kind; }
 
 	typet const& type() const { return m_type; }
-	UserRange users() const { return UserRange(m_users.begin(), m_users.end()); }
+	const std::unordered_set<Instr*>& users() const { return m_users; }
 
 	void add_operand(Instr *val)
 	{
@@ -123,7 +169,7 @@ public:
 	}
 
 	Instr* op_at(size_t i) const { return m_operands.at(i); }
-	OpRange operands() const { return {m_operands.begin(), m_operands.end()}; }
+	OpRange operands() const { 		return OpRange(m_operands.begin(), m_operands.end()); }
 
 	BasicBlock* block() { return m_block; }
 	BasicBlock const* block() const { return m_block; }
@@ -139,6 +185,9 @@ public:
 
 	void set_name_hint(std::string const &name) { m_name_hint = name; }
 	std::string const& name_hint() const { return m_name_hint; }
+
+	// todo: remove this!
+	void set_kind(InstrKind kind) { m_kind = kind; }
 
 private:
 	void set_block(BasicBlock *block)
@@ -198,6 +247,20 @@ public:
 	code_typet const& func_type() const { return to_code_type(to_pointer_type(func_addr()->type()).subtype()); }
 };
 
+class DeadInstr : public Instr
+{
+public:
+	explicit DeadInstr(std::string symbol, BasicBlock *bb = nullptr) :
+		Instr{InstrKind::dead, typet{}, bb},
+		m_symbol(symbol)
+	{
+	}
+
+	std::string const& symbol() const { return m_symbol; }
+
+private:
+	std::string m_symbol;
+};
 
 class NamedAddrInstr : public Instr
 {

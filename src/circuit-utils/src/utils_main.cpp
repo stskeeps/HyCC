@@ -5,10 +5,7 @@
 #include <set>
 #include <map>
 #include <fstream>
-
-
-using circ::optional;
-using circ::nullopt;
+#include <unordered_set>
 
 
 namespace circ {
@@ -30,6 +27,11 @@ void generate_random_assignment(std::ostream &os, Type const &type, std::string 
 		case TypeKind::bits:
 			throw std::runtime_error{"Random assignment of bits not yet supported"};
 			break;
+
+		case TypeKind::boolean:
+		{
+			os << path << " = random_bool(rd);\n";
+		} break;
 
 		case TypeKind::integer:
 		{
@@ -74,6 +76,7 @@ void generate_output_comparer(std::ostream &os, Type const &type, std::string co
 			throw std::runtime_error{"Comparison of bits not yet supported"};
 			break;
 
+		case TypeKind::boolean:
 		case TypeKind::integer:
 		{
 			os << "if((*a)" << path << " != (*b)" << path << ") return false;\n";
@@ -115,6 +118,7 @@ void generate_printer_for_type(std::ostream &os, Type const &type, std::string c
 			throw std::runtime_error{"Random assignment of bits not yet supported"};
 			break;
 
+		case TypeKind::boolean:
 		case TypeKind::integer:
 		{
 			os << "std::cout << \"" << path << " = \" << " << path << " << '\\n';";
@@ -942,6 +946,12 @@ template<typename T>
 T random_int(std::mt19937 &rd)
 {
 	std::uniform_int_distribution<T> dist{std::numeric_limits<T>::min(), std::numeric_limits<T>::max()};
+	return dist(rd);
+}
+
+bool random_bool(std::mt19937 &rd)
+{
+	std::uniform_int_distribution<int> dist{0, 1};
 	return dist(rd);
 }
 )EOC";

@@ -6,7 +6,7 @@ Details to the underlying techniques are described in the corresponding paper [3
 
  * [1] http://forsyte.at/software/cbmc-gc/
  * [2] https://github.com/encryptogroup/ABY
- * [3] Niklas Büscher, Daniel Demmler, Stefan Katzenbeisser, David Kretzmer, Thomas Schneider:  "HyCC: Compilation of Hybrid Protocols for Practical Secure Computation". ACM CCS 2018.
+ * [3] Niklas Büscher, Daniel Demmler, Stefan Katzenbeisser, David Kretzmer, Thomas Schneider: "[HyCC: Compilation of Hybrid Protocols for Practical Secure Computation](https://dl.acm.org/doi/10.1145/3243734.3243786)". ACM CCS 2018.
 
 ## Workflow
 
@@ -55,10 +55,19 @@ single boolean circuit file `mpc_main.circ` for it:
 
 By specifying `--bool <func_name>` or `--arith <func_name>` you can compile
 individual functions into separate boolean or arithmetic circuit files (called
-modules). By specifying `--all-variants` you can compile all functions into
+modules).
+By specifying `--all-variants` you can compile all functions into
 separate boolean and arithmetic circuits (compilation to arithmetic circuits is
-not always possible). Use this option when using Protocol Selection (see further
+not always possible).
+When `--outline` is specified, the compiler will try to split the code into many smaller modules.
+Use the last two options for Protocol Selection (see further
 below).
+
+In some cases HyCC does not provide useful error messages when the input C files
+have issues (e.g., when accessing un-initialized memory).
+Therefore, please make sure to check that the input C files work as intended on
+plain data, for example by compiling it with a regular C compiler and checking
+the binary with Valgrind.
 
 
 #### Evaluating Circuits
@@ -100,45 +109,62 @@ If the above is saved to `test.spec` it can be run like so:
 
 ### 3. Circuit Module Bundle Generation and Protocol Selection
 
-(Note: This step is currently done partially by hand, but will be integrated into the compilation process in the future.
-We are currently in the process of fine-tuning these steps, in order to have a fully automated solution soon.)
+HyCC splits the full functionality into smaller parts, which are called modules.
+For historical reasons each module currently has the file ending `.circ`.
+To put together a full circuit, several modules are bundled in so-called circuit module bundles, or short `.cmb` files, which simply contain a list of modules (`.circ` files) and the respective sharings.
+For this step to work properly, `cbmc-gc` must be invoked with `--all-variants` and optionally `--outline`.
 
-Run `module_bundle.py module-directory/` to generate up to 4 possible module configurations, for example:
+`.cmb` files can be written by hand, or generated automatically:
 
-    ./module_bundle.py examples/biomatch/
+1. *Heuristic solution:*
+   Run `module_bundle.py module-directory/` to generate up to 5 possible default module configurations, for example:
+   ./module_bundle.py examples/biomatch/
 
-This will generate `all.cmb`,  `gmwhybrid.cmb`, `gmwonly.cmb`, `yaohybrid.cmb`, and `yaoonly.cmb`, which can be passed to ABY in the next step. Currently users have to manually choose the .cmb file and thus the (hybrid) protocol that works best for their use case. This will happen automatically in the future.
+   This will generate `all.cmb`, `gmwonly.cmb`, `yaoonly.cmb`, and `gmwhybrid.cmb`, `yaohybrid.cmb`,
+   which is a list of all available circuits, the full circuit with only GMW/Yao gates and no arithmetic gates, or a hybrid circuit where all arithmetic modules use arithmetic sharing, while the remaining modules are GMW/Yao.
+
+
+2. *Optimized solution:*
+   Given a cost function an efficient protocol selection can be made automatically. The cost can be determined using the output of ABY's [bench_operations](https://github.com/encryptogroup/ABY/tree/public/src/examples/bench_operations) and brought into the right format using `python bench_convert.py`, which creates a `costs.json` file. This file can also be manually modified.
+
+   The protocol selection is then run using `python selection.py ../circuits costs.json` where `../circuits/` is a directory of `.circ` files.
+   This will evaluate all possible module combinations, print them to the terminal and will write the most efficient one to `ps_optimized.cmb`.
+   Alternatively the cost of an existing `.cmb` file can be evaluated by calling `python selection.py test.cmb costs.json`.
+
+`.cmb` files can be passed to ABY in the next step.
+Users can manually choose the `.cmb` file and thus the (hybrid) protocol that works best for their use case.
 
 
 ### 4. Evaluating Circuits with ABY
 
-
 To use a generated circuit with ABY you need to:
 
-1. Clone and build the ABY framework (detailed instructions can be found on
-   <https://github.com/encryptogroup/ABY>).
-2. The framework needs to be put next to the `cbmc-gc/` folder (i.e. one directory up from this README).
-3. Copy the folder `cbmc-gc/aby-hycc/` to `ABY/src/examples/aby-hycc/`.
-4. Append `add_subdirectory(aby-hycc)` to `ABY/src/examples/CMakeLists.txt`
-5. Create a build directory in the ABY directory: `mkdir build && cd build`
-6. Run cmake in the `ABY/build` directory `cmake .. -DABY_BUILD_EXE=On`
-7. Run make in the `ABY/build` directory: `make`
-6. `ABY/build/bin/` now contains a binary called `aby-hycc`.
+1. Clone the [ABY framework](https://github.com/encryptogroup/ABY) to a location of your choice.
+2. Copy the folder `HyCC/aby-hycc/` to `ABY/src/examples/aby-hycc/`.
+3. In line 2 of `ABY/src/examples/aby-hycc/CMakeLists.txt` set the variable `HYCC_DIR` to the root directory of your HyCC installation, i.e., the directory that contains this README.
+4. Add `add_subdirectory(aby-hycc)` to `ABY/src/examples/CMakeLists.txt`
 
-To use `aby-hycc` you first need to copy it into the directory containing
-the circuit files, e.g. `cp bin/aby-hycc ../../cbmc-gc/examples/biomatch/`.
+The following steps are the default build process for ABY, as also described in the ABY README on <https://github.com/encryptogroup/ABY>.
+
+5. Create a build directory in the ABY directory: `mkdir build && cd build`
+6. Run `cmake` in the `ABY/build` directory and enable building of executables: `cmake .. -DABY_BUILD_EXE=On`
+7. Run `make` in the `ABY/build` directory: `make`
+6. `ABY/build/bin/` should now contain a binary called `aby-hycc`.
+
+`aby-hycc` needs to be put in the same directory as the circuits and `.cmb` files, e.g., by running `cp bin/aby-hycc ../../HyCC/examples/benchmarks/biomatch/`.
 
 Example usage:
 
-    aby-hycc -r 0 -c modules.cmb &
-    aby-hycc -r 1 -c modules.cmb
+    aby-hycc -r 0 -c yaohybrid.cmb &
+    aby-hycc -r 1 -c yaohybrid.cmb
 
 The option `-r 0` starts `aby-hycc` as a server and `-r 1` as a client.
 
+With the option `-c <filename.cmb>` a `.cmb` file can be specified for evaluation.
+
 The parameter `--spec` is used to pass inputs to the parties, e.g.: `--spec "INPUT_B_sample := [0, 1, 2, 3];"
 `.
-Inputs starting with `INPUT_B` are associated with the server and the ones
-starting with `INPUT_A` with the client.
+Inputs starting with `INPUT_B` are associated with the server and the ones starting with `INPUT_A` with the client.
 
 
 ### Export to other formats
@@ -251,4 +277,3 @@ NOTE: Currently, creating tests poses some restrictions on the C code:
      `InputA`, `InputB` and `Output`, respectively.
 
 Take a look at the test-cases for examples.
-

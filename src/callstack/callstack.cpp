@@ -132,9 +132,9 @@ bool fill_info_for_kind(CircuitInfo &info, std::string const &base_name, Circuit
 		for(simple_circuitt::variablet const &var: circuit.variables())
 		{
 			if(var.owner == variable_ownert::output)
-				info.output_bit_width += bit_width(var.type);
+				info.output_bit_width += get_bit_width(var.type);
 			else
-				info.input_bit_width += bit_width(var.type);
+				info.input_bit_width += get_bit_width(var.type);
 		}
 	}
 

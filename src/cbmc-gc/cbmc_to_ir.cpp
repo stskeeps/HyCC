@@ -65,14 +65,6 @@ ir::Instr* convert_to_ir_no_auto_deref(
 
 		return bb->function()->get_constant(int_val, const_expr.type());
 	}
-	else if(expr.id() == ID_array)
-	{
-		ir::Instr *comb = new ir::Instr{ir::InstrKind::combine, expr.type(), bb};
-		for(auto const &op: expr.operands())
-			comb->add_operand(convert_to_ir_auto_deref(bb, scope, ns, op));
-
-		return comb;
-	}
 	else if(expr.id() == ID_struct)
 	{
 		assert(!"TODO");
@@ -143,46 +135,6 @@ ir::Instr* convert_to_ir_no_auto_deref(
 
 		return bb->push_back(sub);
 	}
-	else if(expr.id() == ID_mult)
-	{
-		ir::Instr *mul = new ir::Instr{ir::InstrKind::mul, expr.type()};
-		for(auto const &op: expr.operands())
-			mul->add_operand(convert_to_ir_auto_deref(bb, scope, ns, op));
-
-		return bb->push_back(mul);
-	}
-	else if(expr.id() == ID_div)
-	{
-		ir::Instr *div = new ir::Instr{ir::InstrKind::div, expr.type()};
-		for(auto const &op: expr.operands())
-			div->add_operand(convert_to_ir_auto_deref(bb, scope, ns, op));
-
-		return bb->push_back(div);
-	}
-	else if(expr.id() == ID_lt)
-	{
-		ir::Instr *lt = new ir::Instr{ir::InstrKind::lt, expr.type()};
-		lt->add_operand(convert_to_ir_auto_deref(bb, scope, ns, expr.op0()));
-		lt->add_operand(convert_to_ir_auto_deref(bb, scope, ns, expr.op1()));
-
-		return bb->push_back(lt);
-	}
-	else if(expr.id() == ID_gt)
-	{
-		ir::Instr *gt = new ir::Instr{ir::InstrKind::gt, expr.type()};
-		gt->add_operand(convert_to_ir_auto_deref(bb, scope, ns, expr.op0()));
-		gt->add_operand(convert_to_ir_auto_deref(bb, scope, ns, expr.op1()));
-
-		return bb->push_back(gt);
-	}
-	else if(expr.id() == ID_equal)
-	{
-		ir::Instr *eq = new ir::Instr{ir::InstrKind::eq, expr.type()};
-		eq->add_operand(convert_to_ir_auto_deref(bb, scope, ns, expr.op0()));
-		eq->add_operand(convert_to_ir_auto_deref(bb, scope, ns, expr.op1()));
-
-		return bb->push_back(eq);
-	}
 	else if(expr.id() == ID_notequal)
 	{
 		ir::Instr *eq = new ir::Instr{ir::InstrKind::eq, expr.type()};
@@ -195,35 +147,6 @@ ir::Instr* convert_to_ir_no_auto_deref(
 	else if(expr.id() == ID_not)
 	{
 		return create_lnot(convert_to_ir_auto_deref(bb, scope, ns, expr.op0()), bb);
-	}
-	else if(expr.id() == ID_and)
-	{
-		assert(!"TODO");
-	}
-	else if(expr.id() == ID_bitand)
-	{
-		assert(expr.operands().size() == 2);
-		ir::Instr *b_and = new ir::Instr{ir::InstrKind::b_and, expr.type()};
-		b_and->add_operand(convert_to_ir_auto_deref(bb, scope, ns, expr.op0()));
-		b_and->add_operand(convert_to_ir_auto_deref(bb, scope, ns, expr.op1()));
-
-		return bb->push_back(b_and);
-	}
-	else if(expr.id() == ID_lshr)
-	{
-		assert(expr.operands().size() == 2);
-		ir::Instr *lshr = new ir::Instr{ir::InstrKind::lshr, expr.type()};
-		lshr->add_operand(convert_to_ir_auto_deref(bb, scope, ns, expr.op0()));
-		lshr->add_operand(convert_to_ir_auto_deref(bb, scope, ns, expr.op1()));
-
-		return bb->push_back(lshr);
-	}
-	else if(expr.id() == ID_typecast)
-	{
-		ir::Instr *cast = new ir::Instr(ir::InstrKind::cast, expr.type());
-		cast->add_operand(convert_to_ir_auto_deref(bb, scope, ns, expr.op0()));
-
-		return bb->push_back(cast);
 	}
 	// Struct member access, e.g. `pos.x`
 	if(expr.id() == ID_member)
@@ -287,6 +210,15 @@ ir::Instr* convert_to_ir_no_auto_deref(
 			return new ir::Instr{ir::InstrKind::nondet, expr.type(), bb};
 		else
 			throw std::runtime_error{"Unsupported side-effect: " + as_string(side_effect.get_statement())};
+	}
+
+	auto it = ir::simple_operations.find(expr.id());
+	if (it != ir::simple_operations.end()) {
+		ir::Instr *instr = new ir::Instr{it->second, expr.type()};
+		for(auto const &op: expr.operands())
+			instr->add_operand(convert_to_ir_auto_deref(bb, scope, ns, op));
+
+		return bb->push_back(instr);
 	}
 
 	std::cerr << expr.pretty() << std::endl;
@@ -371,7 +303,7 @@ ir::BasicBlock* convert_to_ir(
 	if(inst.is_decl())
 	{
 		symbol_exprt const &symbol = to_symbol_expr(to_code_decl(inst.code).symbol());
-		scope->declare_var(as_string(symbol.get_identifier()), symbol.type());
+		scope->declare_var_explicit(as_string(symbol.get_identifier()), symbol.type());
 	}
 	else if(inst.is_assign())
 	{
@@ -439,6 +371,11 @@ ir::BasicBlock* convert_to_ir(
 	{
 		// We assume that remove_returns() has been called already
 		throw std::runtime_error{"return statements should have been removed at this point"};
+	}
+	else if (inst.is_dead())
+	{
+		code_deadt const &dead = to_code_dead(inst.code);
+		new ir::DeadInstr{as_string(dead.get_identifier()), bb};
 	}
 
 	return bb;

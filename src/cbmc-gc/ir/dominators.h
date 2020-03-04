@@ -92,11 +92,16 @@ public:
 	explicit DominatorTree(IDomMap &&idoms) :
 		m_idoms{std::move(idoms)} {}
 
+	// Returns nullptr if `b` is the root node
 	BasicBlock const* get_idom(BasicBlock const *b) const
 	{
 		auto it = m_idoms.find(b);
 		if(it == m_idoms.end())
 			throw std::runtime_error{"BasicBlock has no idom"};
+
+		// `m_idoms` maps the root node to itself
+		if(it->second == b)
+			return nullptr;
 
 		return it->second;
 	}
@@ -107,12 +112,8 @@ public:
 
 		while(b != dominator)
 		{
-			BasicBlock const *idom = get_idom(b);
-			// If `b == idom` then we have reached the start block
-			if(b == idom)
+			if(not (b = get_idom(b)))
 				return false;
-
-			b = idom;
 		}
 
 		return true;
@@ -125,6 +126,10 @@ private:
 // See https://www.cs.rice.edu/~keith/EMBED/dom.pdf
 // Requires single entry/exit (depending on whether DominatorFuncs or PostDominatorFuncs is used)
 // Also see https://github.com/cretonne/cretonne/blob/master/lib/codegen/src/dominator_tree.rs
+// 
+// TODO The DominatorTree should not deal directly with BasicBlocks but have its own node type. Then
+//      we can also drop the requirement that a function needs a single exit block, because we can
+//      simply add an exit node to the DominatorTree. This is how LLVM does it.
 template<typename Funcs>
 DominatorTree compute_idoms(Function const &func, Funcs const &funcs)
 {

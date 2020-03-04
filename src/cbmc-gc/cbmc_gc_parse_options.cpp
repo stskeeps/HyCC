@@ -74,6 +74,9 @@ Author: Daniel Kroening, kroening@kroening.com
 #include "ir/pointer_analysis.h"
 #include "ir/reaching_definitions.h"
 #include "ir/program_dependence_graph.h"
+#include "ir/instruction_outliner.h"
+
+#include "ir_to_cbmc.h"
 
 #include <limits.h>
 
@@ -160,6 +163,8 @@ static void write_circuit_stats(simple_circuitt const &circuit, std::string cons
   stats_file << "total_depth " << stats.depth << '\n';
 }
 
+#define VERBOSE 1
+
 // Main function of cbmc_gc_parse_optionst
 int cbmc_gc_parse_optionst::doit()
 {
@@ -232,12 +237,9 @@ int cbmc_gc_parse_optionst::doit()
   goto_modulet module = invoke_goto_compilation(cmdline, ui_message_handler);
 
 
-  if(cmdline.isset("test-pointer-analysis"))
+  if(cmdline.isset("test-pointer-analysis") || cmdline.isset("outline"))
   {
     namespacet ns{module.original_symbols()};
-
-    module.main_function().output(ns, "", std::cout);
-    std::cout << std::endl;
 
     ir::SymbolTable sym_table;
 
@@ -260,11 +262,27 @@ int cbmc_gc_parse_optionst::doit()
       ir::Decl *decl = pair.second.get();
       if(decl->kind() == ir::DeclKind::function)
       {
-        std::cout << "Converting " << decl->name() << std::endl;
+        std::cout << "Converting " << decl->name() << "\n" << std::endl;
+
+#if VERBOSE
+        module.goto_functions().function_map.at(decl->name()).body.output(ns, "", std::cout);
+        std::cout << std::endl;
+#endif
+
         auto ir_func = convert_to_ir(
           sym_table,
           ns,
           module.goto_functions().function_map.at(decl->name()));
+
+#if VERBOSE
+        ir::InstrNameMap names;
+        ir_func->print(std::cout, &names);
+        std::cout << std::endl;
+#endif
+
+        std::ofstream of{"basic_blocks_" + decl->name() + "_raw.dot"};
+        ir::to_dot(*ir_func, of);
+        of.flush();
 
         static_cast<ir::FuncDecl*>(decl)->set_function(std::move(ir_func));
       }
@@ -272,46 +290,62 @@ int cbmc_gc_parse_optionst::doit()
 
     ir::InstrNameMap names;
     ir::Function *main_func = sym_table.root_scope()->lookup_func(module.main_function_name())->function();
-    main_func->print(std::cout, &names);
-
-    std::ofstream of{"basic_blocks_" + main_func->name() + "_raw.dot"};
-    ir::to_dot(*main_func, of);
-    of.flush();
 
     boolbv_widtht boolbv_width{ns};
-    ir::ContextInsensitiveCallAnalyzer ca{boolbv_width};
+    ir::PAContextSensitiveCallAnalyzer pa_ca{boolbv_width};
     std::cout << "Starting pointer analysis" << std::endl;
 
-	ir::CallPath cp;
-    ir::PointsToMap pt_main = ir::pointer_analysis(cp, main_func, {}, &ca);
+    pa_ca.analyze_entry_point(main_func);
+    ir::PointsToMap pt_main = pa_ca.result_for({});
 
     std::cout << "\n";
-	ca.print(std::cout);
 
-    std::cout << "Points-to map for '" << main_func->name() << "'\n";
-    pt_main.print(std::cout);
-    std::cout << std::endl;
+    std::cout << "Starting reaching definitions analysis" << std::endl;
+    ir::RDContextSensitiveCallAnalyzer rd_ca{&pa_ca, boolbv_width};
+    rd_ca.analyze_entry_point(main_func);
+    ir::ReachingDefinitions rd = rd_ca.result_for({});
 
-	std::cout << "\n\nStarting reaching definitions analysis" << std::endl;
-	ir::ReachingDefinitions rd = ir::reaching_definitions(main_func, pt_main, boolbv_width);
+    std::cout << "Starting program dependence graph analysis" << std::endl;
+    ir::PDGContextSensitiveCallAnalyzer pdg_ca{&pa_ca, &rd_ca, boolbv_width};
+    pdg_ca.analyze_entry_point(main_func);
 
-	/*for(auto const &pair: rd)
-	{
-		for(ir::Definition const &def: pair.second)
-		{
-			std::cout << "// ";
-			::ir::print(def, names, std::cout);
-			std::cout << "\n";
-		}
 
-		pair.first->print_inline(std::cout, names);
-		std::cout << "\n\n";
-	}*/
+    std::ofstream pdg_dot{"PDG_" + main_func->name() + ".dot"};
+    pdg_ca.to_dot(pdg_dot, names);
 
-	ir::ProgramDependenceGraph pdg = ir::create_pdg(main_func, rd, pt_main);
-	pdg.print(std::cout, names);
+    if (cmdline.isset("outline")) {
+      ir::InstructionOutliner outliner(pdg_ca, names, sym_table, module);
+      outliner.run(main_func);
+    }
 
-    return 0;
+    for(auto const &pair: sym_table.root_scope()->symbols())
+    {
+      ir::Decl *decl = pair.second.get();
+
+      if (decl->kind() != ir::DeclKind::function)
+        continue;
+
+      std::cout << "Converting \"" << decl->name() << "\" back to CBMC." << std::endl;
+
+      goto_programt program;
+      if (!convert_to_cbmc(static_cast<ir::FuncDecl*>(decl)->function(), program, ns)) {
+        std::cout << "\n == Conversion failed! ==" << std::endl;
+        continue;
+      } else {
+        std::cout << "\n Conversion successful." << std::endl;
+      }
+
+      // Replace original function.
+      goto_programt& old_program = module.goto_functions().function_map.at(decl->name()).body;
+      old_program.swap(program);
+
+      module.goto_functions().update();
+
+#if VERBOSE
+      module.goto_functions().function_map.at(decl->name()).body.output(ns, "", std::cout);
+      std::cout << std::endl;
+#endif
+    }
   }
 
 
@@ -457,7 +491,7 @@ int cbmc_gc_parse_optionst::doit()
 
     std::ofstream os{main_circuit.name() + ".circ"};
     main_circuit.write(os);
-	write_circuit_stats(main_circuit);
+    write_circuit_stats(main_circuit);
   }
   else
   {
@@ -467,8 +501,8 @@ int cbmc_gc_parse_optionst::doit()
       {
         simple_circuitt &circ = circuits_by_name.at(pair.first);
         std::ofstream os{pair.first + ".circ"};
-		circ.write(os);
-	    write_circuit_stats(circ);
+        circ.write(os);
+        write_circuit_stats(circ);
       }
     }
   }
@@ -523,9 +557,9 @@ void cbmc_gc_parse_optionst::compile_all_variants(goto_modulet &module)
     if(starts_with(func_name, "__CPROVER"))
       continue;
 
-	code_typet const &func_type = pair.second.type;
-	if(is_template_func(func_type))
-		continue;
+    code_typet const &func_type = pair.second.type;
+    if(is_template_func(func_type))
+      continue;
 
     compile_all_variants(module, func_name);
   }
@@ -555,7 +589,7 @@ void cbmc_gc_parse_optionst::compile_all_variants(
 
     std::ofstream os{circuit.name() + "@bool_size.circ"};
     circuit.write(os);
-	write_circuit_stats(circuit, "@bool_size");
+    write_circuit_stats(circuit, "@bool_size");
   }
 
   {
@@ -566,7 +600,7 @@ void cbmc_gc_parse_optionst::compile_all_variants(
 
     std::ofstream os{circuit.name() + "@bool_depth.circ"};
     circuit.write(os);
-	write_circuit_stats(circuit, "@bool_depth");
+    write_circuit_stats(circuit, "@bool_depth");
   }
 
   {
@@ -604,7 +638,7 @@ void cbmc_gc_parse_optionst::preprocessing()
       return;
     }
 
-	std::unique_ptr<languaget> language=get_language_from_filename(filename);
+  std::unique_ptr<languaget> language=get_language_from_filename(filename);
 
     if(!language)
     {

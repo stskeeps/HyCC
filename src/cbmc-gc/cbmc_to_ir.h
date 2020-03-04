@@ -3,6 +3,7 @@
 #include <goto-programs/goto_functions.h>
 
 
+
 namespace ir {
 	class SymbolTable;
 	class Function;

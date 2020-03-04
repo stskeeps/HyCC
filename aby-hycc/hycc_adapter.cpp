@@ -155,7 +155,7 @@ void print_result(
 
 
 //==================================================================================================
-std::pair<cstring_ref, e_sharing> split_filename_kind(std::string const &str)
+std::pair<cstring_ref, e_sharing> split_filename_kind_deprecated(std::string const &str)
 {
 	e_sharing kind = e_sharing::S_LAST;
 
@@ -177,6 +177,31 @@ std::pair<cstring_ref, e_sharing> split_filename_kind(std::string const &str)
 
 	auto filename = trim(cstring_ref{str.data(), str.data() + last_colon});
 	return {filename, kind};
+}
+
+std::pair<cstring_ref, e_sharing> split_filename_kind(std::string const &str)
+{
+	e_sharing kind = e_sharing::S_LAST;
+
+	size_t at_sign = str.rfind('@');
+	if (at_sign == std::string::npos || at_sign + 1 == str.length())
+	{
+		return {str, kind};
+	}
+
+	cstring_ref kind_str{str.data() + at_sign + 1, str.data() + str.length()};
+	kind_str = trim(kind_str);
+
+	if (kind_str == "bool_size.circ")
+		kind = e_sharing::S_YAO;
+	else if (kind_str == "bool_depth.circ")
+		kind = e_sharing::S_BOOL;
+	else if (kind_str == "arith.circ")
+		kind = e_sharing::S_ARITH;
+	else
+		throw std::runtime_error{"Invalid circuit kind: " + ::str(kind_str)};
+
+	return {str, kind};
 }
 
 void update_sharing_kind(simple_circuitt  &circuit, e_sharing boolean_sharing)

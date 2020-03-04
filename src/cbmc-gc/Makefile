@@ -23,7 +23,9 @@ SRC = cbmc_gc_main.cpp \
       ir/reaching_definitions.cpp \
       ir/program_dependence_graph.cpp \
       ir/symbol_table.cpp \
+      ir/instruction_outliner.cpp \
       cbmc_to_ir.cpp \
+      ir_to_cbmc.cpp \
       simple_lexer.cpp \
 
 

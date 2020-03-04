@@ -55,7 +55,7 @@ std::string get_temporary_directory(const std::string &name_template)
 
     result=std::string(t);
 
-  #else
+  #else // not _WIN32
     std::string prefixed_name_template="/tmp/";
     const char *TMPDIR_env=getenv("TMPDIR");
     if(TMPDIR_env!=nullptr)
@@ -64,7 +64,7 @@ std::string get_temporary_directory(const std::string &name_template)
       prefixed_name_template+='/';
     prefixed_name_template+=name_template;
 
-    char t[1000];
+    char t[1001];
     strncpy(t, prefixed_name_template.c_str(), 1000);
     const char *td = mkdtemp(t);
     if(!td)

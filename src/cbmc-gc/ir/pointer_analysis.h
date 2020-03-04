@@ -8,6 +8,7 @@
 #include "function.h"
 #include "ir.h"
 #include "symbol_table.h"
+#include "call_path.h"
 
 
 // References
@@ -506,11 +507,6 @@ private:
 
 
 //==================================================================================================
-// A call-path uniquely identifies a specific function call in a program. The
-// elements of CallPath describe the path through the call-stack to the
-// CallInstr we are interested in.
-using CallPath = std::vector<CallInstr const*>;
-
 // By abstracting how to analyze function calls we can implement various
 // degrees of context-sensitivity.
 class PACallAnalyzer
@@ -519,12 +515,14 @@ public:
 	PACallAnalyzer(boolbv_widtht const &bv) :
 		m_boolbv_width{bv} {}
 
-	virtual PointsToMap const& result_for(CallPath const &cp) = 0;
+	virtual PointsToMap const& result_for(CallPath const &cp) const = 0;
 
 	// Updates the PointsToMap of the caller, `pt_caller`, such that it contains
 	// the points-to information added after executing the function denoted by
 	// `cp`. Additionally, the last element of `cp` is removed.
-	virtual bool analyze(CallPath &cp, PointsToMap &pt_caller) = 0;
+	virtual bool analyze_call(CallPath &cp, PointsToMap &pt_caller) = 0;
+
+	virtual void analyze_entry_point(Function const *main) = 0;
 
 	// TODO This is totally out of place here. Move somewhere else.
 	boolbv_widtht const& boolbv_width() const { return m_boolbv_width; }
@@ -542,40 +540,56 @@ PointsToMap pointer_analysis(
 
 
 //==================================================================================================
-// This is the most context-sensitive analysis I can imagine (I'm not very
-// creative): For each function, we keep separate PointsToMaps for each possible
-// call-path. This may result in exponential running time and memory usage, so
-// this is something to keep in mind. However, since most programs we analyze
-// are not that large anyway, we may get away with it.
-class ContextSensitiveCallAnalyzer : public PACallAnalyzer
+// This is the most context-sensitive analysis I can imagine (though I'm not
+// very creative): For each function, we keep separate PointsToMaps for each
+// possible call-path. This may result in exponential running time and memory
+// usage. However, since most programs we analyze are not that large anyway, we
+// may get away with it.
+//
+// The result of the pointer analysis for a function only depends on the
+// aliasing between the arguments to the function. Thus, we may save both time
+// and memory without sacrificing precision by merging the analysis results for
+// functions that are called with the same aliasing between arguments. This is
+// the approach taken in "Efficient context-sensitive pointer analysis for C
+// programs" by Robert P. Wilson, 1997.
+class PAContextSensitiveCallAnalyzer : public PACallAnalyzer
 {
 public:
 	struct CallInfo
 	{
-		CallInfo(Function *callee) :
+		CallInfo(Function const *callee) :
 			callee{callee},
 			num_times_analysed{0} {}
 
-		Function *callee;
+		Function const *callee;
 		PointsToMap input_pt;
 		PointsToMap output_pt;
 		int num_times_analysed;
 	};
 
-	ContextSensitiveCallAnalyzer(boolbv_widtht const &bv) :
+	PAContextSensitiveCallAnalyzer(boolbv_widtht const &bv) :
 		PACallAnalyzer{bv} {}
 
-	PointsToMap const& result_for(CallPath const &cp) override
+	PointsToMap const& result_for(CallPath const &cp) const override
 	{
-		assert(cp.size());
 		auto it = m_call_info.find(cp);
 		if(it == m_call_info.end())
-			throw std::runtime_error{"No analysis result available"};
+			throw std::runtime_error{"No pointer analysis result available for: " + str(cp)};
 
 		return it->second.output_pt;
 	}
 
-	bool analyze(CallPath &cp, PointsToMap &pt_caller) override;
+	bool analyze_call(CallPath &cp, PointsToMap &pt_caller) override;
+
+	void analyze_entry_point(Function const *main) override
+	{
+		CallPath cp;
+
+		CallInfo ci{main};
+		ci.output_pt = pointer_analysis(cp, main, {}, this);
+		ci.num_times_analysed = 1;
+		m_call_info.insert({{}, ci});
+	}
 
 	void print(std::ostream &os) const
 	{
@@ -595,53 +609,64 @@ private:
 
 
 //==================================================================================================
-inline FuncDecl* try_get_func_decl(CallInstr const *call)
-{
-	if(call->func_addr()->kind() != InstrKind::named_addr)
-		return nullptr;
-
-	Decl *decl = static_cast<NamedAddrInstr const*>(call->func_addr())->decl();
-	assert(decl->kind() == DeclKind::function);
-	return static_cast<FuncDecl *>(decl);
-}
-
 // Completely context-insensitive analysis. This means we only compute a single
 // PointsToMap for each function. Much more efficient and much less precise then
-// ContextSensitiveCallAnalyzer.
-class ContextInsensitiveCallAnalyzer : public PACallAnalyzer
+// PAContextSensitiveCallAnalyzer.
+class PAContextInsensitiveCallAnalyzer : public PACallAnalyzer
 {
 public:
 	// Stores the analysis results for a single call-site (i.e., CallInstr).
 	struct CallInfo
 	{
-		CallInfo(Function *callee) :
+		CallInfo(Function const *callee) :
 			callee{callee},
 			num_times_analysed{0} {}
 
-		Function *callee;
+		Function const *callee;
 		PointsToMap input_pt;
 		PointsToMap output_pt;
 		int num_times_analysed = 0;
 	};
 
-	ContextInsensitiveCallAnalyzer(boolbv_widtht const &bv) :
-		PACallAnalyzer{bv} {}
+	PAContextInsensitiveCallAnalyzer(boolbv_widtht const &bv) :
+		PACallAnalyzer{bv},
+		m_main_func{} {}
 
-	PointsToMap const& result_for(CallPath const &cp) override
+	PointsToMap const& result_for(CallPath const &cp) const override
 	{
-		assert(cp.size());
-		FuncDecl *func_decl = try_get_func_decl(cp.back());
-		if(!func_decl)
-			throw std::runtime_error{"Unexpected function pointer"};
+		assert(cp.size() || m_main_func);
+		
+		Function const *func = nullptr;
+		if(cp.empty())
+			func = m_main_func;
+		else
+		{
+			FuncDecl *func_decl = try_get_func_decl(cp.back());
+			if(!func_decl)
+				throw std::runtime_error{"Unexpected function pointer"};
 
-		auto it = m_call_info.find(func_decl->function());
+			func = func_decl->function();
+		}
+
+		auto it = m_call_info.find(func);
 		if(it == m_call_info.end())
 			throw std::runtime_error{"No analysis result available"};
 
 		return it->second.output_pt;
 	}
 
-	bool analyze(CallPath &cp, PointsToMap &pt_caller) override;
+	bool analyze_call(CallPath &cp, PointsToMap &pt_caller) override;
+
+	void analyze_entry_point(Function const *main) override
+	{
+		CallPath cp;
+
+		CallInfo ci{main};
+		ci.output_pt = pointer_analysis(cp, main, {}, this);
+		ci.num_times_analysed = 1;
+		m_call_info.insert({{}, ci});
+		m_main_func = main;
+	}
 
 	void print(std::ostream &os) const
 	{
@@ -657,6 +682,7 @@ public:
 
 private:
 	std::unordered_map<Function const*, CallInfo> m_call_info;
+	Function const *m_main_func;
 };
 
 }

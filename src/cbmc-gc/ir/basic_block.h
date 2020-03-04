@@ -109,6 +109,14 @@ public:
 		return instr;
 	}
 
+	template<typename InstrT>
+	InstrT* insert_before(InstrT *instr, Instr* before)
+	{
+		m_instrs.insert(before, instr);
+		instr->set_block(this);
+		return instr;
+	}
+
 	JumpInstr* create_jump(BasicBlock *target)
 	{
 		assert(!has_terminator() && "BasicBlock already has a terminator");

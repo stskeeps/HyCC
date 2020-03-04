@@ -16,17 +16,28 @@ char const* cstr(InstrKind kind)
 	{
 		case InstrKind::constant: return "constant";
 		case InstrKind::output: return "output";
+		case InstrKind::dead: return "dead";
 		case InstrKind::add: return "add";
 		case InstrKind::sub: return "sub";
 		case InstrKind::mul: return "mul";
 		case InstrKind::div: return "div";
+		case InstrKind::mod: return "mod";
+		case InstrKind::unary_neg: return "unary_neg";
 		case InstrKind::lt: return "lt";
+		case InstrKind::le: return "le";
 		case InstrKind::gt: return "gt";
+		case InstrKind::ge: return "ge";
 		case InstrKind::eq: return "eq";
 		case InstrKind::b_and: return "b_and";
+		case InstrKind::b_xor: return "b_xor";
 		case InstrKind::b_or: return "b_or";
 		case InstrKind::b_not: return "b_not";
+		case InstrKind::l_not: return "l_not";
+		case InstrKind::l_and: return "l_and";
+		case InstrKind::l_or: return "l_or";
 		case InstrKind::lshr: return "lshr";
+		case InstrKind::ashr: return "ashr";
+		case InstrKind::shl: return "shl";
 		case InstrKind::call: return "call";
 		case InstrKind::named_addr: return "named_addr";
 		case InstrKind::compute_addr: return "compute_addr";
@@ -265,13 +276,16 @@ bool type_check(Instr const *instr, ValidationContext &ctx)
 	{
 		case InstrKind::constant:
 		case InstrKind::output:
+		case InstrKind::dead:
 			return true;
 
 		case InstrKind::add:
 		case InstrKind::sub:
 		case InstrKind::mul:
 		case InstrKind::div:
+		case InstrKind::mod:
 		case InstrKind::b_and:
+		case InstrKind::b_xor:
 		case InstrKind::b_or:
 		{
 			if(instr->operands().size() < 2)
@@ -301,6 +315,7 @@ bool type_check(Instr const *instr, ValidationContext &ctx)
 		}
 
 		case InstrKind::b_not:
+		case InstrKind::unary_neg:
 		{
 			if(instr->operands().size() != 1)
 			{
@@ -325,7 +340,63 @@ bool type_check(Instr const *instr, ValidationContext &ctx)
 			return true;
 		}
 
+		case InstrKind::l_not:
+		{
+			if(instr->operands().size() != 1)
+			{
+				error_num_ops(instr, 1, instr->operands().size(), ctx);
+				return false;
+			}
+
+			if(instr->type().id() != ID_bool)
+			{
+				(*ctx.os) << "Error: instruction must be of type bool, got " << from_type(ns, "", instr->type()) << ": ";
+				instr->print_inline(*ctx.os, *ctx.names);
+				(*ctx.os) << std::endl;
+				return false;
+			}
+
+			if(instr->op_at(0)->type() != instr->type())
+			{
+				error_instr_type(instr, instr->type(), 0, ctx);
+				return false;
+			}
+
+			return true;
+		}
+
+		case InstrKind::l_and:
+		case InstrKind::l_or:
+		{
+			if(instr->operands().size() != 2)
+			{
+				error_too_few_ops(instr, 2, instr->operands().size(), ctx);
+				return false;
+			}
+
+			if(instr->type().id() != ID_bool)
+			{
+				(*ctx.os) << "Error: expected bool type, got " << from_type(ns, "", instr->type()) << ": ";
+				instr->print_inline(*ctx.os, *ctx.names);
+				(*ctx.os) << std::endl;
+				return false;
+			}
+
+			for(size_t i = 0; i < instr->operands().size(); ++i)
+			{
+				if(instr->op_at(i)->type() != instr->type())
+				{
+					error_instr_type(instr, instr->type(), i, ctx);
+					return false;
+				}
+			}
+
+			return true;
+		}
+
 		case InstrKind::lshr:
+		case InstrKind::ashr:
+		case InstrKind::shl:
 		{
 			if(instr->operands().size() != 2)
 			{
@@ -355,7 +426,9 @@ bool type_check(Instr const *instr, ValidationContext &ctx)
 
 		case InstrKind::eq:
 		case InstrKind::lt:
+		case InstrKind::le:
 		case InstrKind::gt:
+		case InstrKind::ge:
 		{
 			if(instr->operands().size() != 2)
 			{

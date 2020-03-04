@@ -6,6 +6,8 @@
 
 
 //==================================================================================================
+struct BoolType {};
+
 struct BitsType
 {
 	int width;
@@ -46,6 +48,7 @@ struct StructType
 enum class TypeKind
 {
 	bits,
+	boolean,
 	integer,
 	array,
 	structure,
@@ -55,6 +58,9 @@ struct Type
 {
 	Type() :
 		Type{BitsType{0}} {}
+
+	Type(BoolType) :
+		m_kind{TypeKind::boolean} {}
 
 	Type(BitsType t) :
 		m_kind{TypeKind::bits},
@@ -133,6 +139,7 @@ private:
 		switch(m_kind)
 		{
 			case TypeKind::bits: break;
+			case TypeKind::boolean: break;
 			case TypeKind::integer: break;
 			case TypeKind::array: m_array.~ArrayType(); break;
 			case TypeKind::structure: m_struct.~StructType(); break;
@@ -145,6 +152,7 @@ private:
 		switch(m_kind)
 		{
 			case TypeKind::bits: new (&m_bits) BitsType{rhs.m_bits}; break;
+			case TypeKind::boolean: break;
 			case TypeKind::integer: new (&m_integer) IntegerType{rhs.m_integer}; break;
 			case TypeKind::array: new (&m_array) ArrayType{rhs.m_array}; break;
 			case TypeKind::structure: new (&m_struct) StructType{rhs.m_struct}; break;
@@ -157,6 +165,7 @@ private:
 		switch(m_kind)
 		{
 			case TypeKind::bits: new (&m_bits) BitsType{std::move(rhs.m_bits)}; break;
+			case TypeKind::boolean: break;
 			case TypeKind::integer: new (&m_integer) IntegerType{std::move(rhs.m_integer)}; break;
 			case TypeKind::array: new (&m_array) ArrayType{std::move(rhs.m_array)}; break;
 			case TypeKind::structure: new (&m_struct) StructType{std::move(rhs.m_struct)}; break;
@@ -174,6 +183,8 @@ inline bool operator == (Type const &a, Type const &b)
 	{
 		case TypeKind::bits:
 			return a.bits().width == b.bits().width;
+		case TypeKind::boolean:
+			return true;
 		case TypeKind::integer:
 			return a.integer().width == b.integer().width && a.integer().is_signed == b.integer().is_signed;
 		case TypeKind::array:
@@ -248,23 +259,88 @@ inline void StructType::add_member(std::string const &name, Type &&type)
 std::ostream& operator << (std::ostream &os, Type const &t);
 std::string str(Type const &t);
 
+inline StructType const* get_struct_type(Type const &t)
+{
+	if(t.kind() == TypeKind::structure)
+		return &t.structure();
 
-inline int bit_width(Type const &t)
+	return nullptr;
+}
+
+inline ArrayType const* get_array_type(Type const &t)
+{
+	if(t.kind() == TypeKind::array)
+		return &t.array();
+
+	return nullptr;
+}
+
+inline IntegerType const* get_integer_type(Type const &t)
+{
+	if(t.kind() == TypeKind::integer)
+		return &t.integer();
+
+	return nullptr;
+}
+
+inline BitsType const* get_bits_type(Type const &t)
+{
+	if(t.kind() == TypeKind::bits)
+		return &t.bits();
+
+	return nullptr;
+}
+
+// Returns the number of bits required to represent a value of the given type.
+inline size_t get_bit_width(Type const &t)
 {
 	switch(t.kind())
 	{
 		case TypeKind::bits: return t.bits().width;
+		case TypeKind::boolean: return 1;
 		case TypeKind::integer: return t.integer().width;
-		case TypeKind::array: return t.array().length * bit_width(*t.array().sub);
+		case TypeKind::array: return t.array().length * get_bit_width(*t.array().sub);
 		case TypeKind::structure:
 		{
 			int width = 0;
 			for(auto const &sub: t.structure().members)
-				width += bit_width(*sub.second);
+				width += get_bit_width(*sub.second);
 
 			return width;
 		}
 	}
 
 	assert(0);
+}
+
+inline size_t get_num_bytes(Type const &t)
+{
+	return (get_bit_width(t) + 7) / 8;
+}
+
+template<typename Func>
+void walk_type_with_path(Type const &type, std::string const &path, Func &&func)
+{
+	switch(type.kind())
+	{
+		case TypeKind::bits:
+		case TypeKind::boolean:
+		case TypeKind::integer:
+			func(path, type);
+		break;
+
+		case TypeKind::array:
+		{
+			auto arr_type = get_array_type(type);
+			for(int i = 0; i < arr_type->length; ++i)
+				walk_type_with_path(*arr_type->sub, path + '[' + std::to_string(i) + ']', std::forward<Func>(func));
+		} break;
+
+		case TypeKind::structure:
+		{
+			auto struct_type = get_struct_type(type);
+			for(auto const &m: struct_type->members)
+				walk_type_with_path(*m.second, path + '.' + m.first, std::forward<Func>(func));
+		} break;
+	}
 }

@@ -32,7 +32,6 @@ $(BIN_DIR) $(BUILD_DIR):
 $(BIN_DIR)/circuit-sim: \
  $(BUILD_DIR)/sim_main.o \
  $(BUILD_DIR)/cbmc_file_format.o \
- $(BUILD_DIR)/spec.o \
  $(BUILD_DIR)/bristol_file_format.o \
  $(BUILD_DIR)/circuit_simulation.o
  #$(BUILD_DIR)/cbmc_legacy_file_format.o
@@ -42,7 +41,6 @@ $(BIN_DIR)/circuit-utils: \
  $(BUILD_DIR)/utils_main.o \
  $(BUILD_DIR)/circuit_to_code.o \
  $(BUILD_DIR)/cbmc_file_format.o \
- $(BUILD_DIR)/spec.o \
  $(BUILD_DIR)/bristol_file_format.o \
  $(BUILD_DIR)/scd_file_format.o \
  $(BUILD_DIR)/shdl_file_format.o
@@ -52,7 +50,6 @@ $(BIN_DIR)/circuit-utils: \
 $(BIN_DIR)/libcircuit-utils.a: \
  $(BUILD_DIR)/circuit_to_code.o \
  $(BUILD_DIR)/cbmc_file_format.o \
- $(BUILD_DIR)/spec.o \
  $(BUILD_DIR)/circuit_simulation.o \
  $(BUILD_DIR)/bristol_file_format.o \
  $(BUILD_DIR)/scd_file_format.o \
@@ -64,7 +61,6 @@ $(BIN_DIR)/libcircuit-utils.a: \
 test/test: \
  $(BUILD_DIR)/test.o \
  $(BUILD_DIR)/cbmc_file_format.o \
- $(BUILD_DIR)/spec.o
  #$(BUILD_DIR)/cbmc_legacy_file_format.o
  $(CPP) $(CPP_FLAGS) $^ -o $@ -L../cbmc/src/util -L../libcircuit -lcircuit -L../cbmc/src/big-int -l:big-int.a
 

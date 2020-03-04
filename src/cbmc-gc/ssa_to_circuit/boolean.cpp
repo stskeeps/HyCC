@@ -187,9 +187,9 @@ simple_circuitt compile_bool(
     // We only convert assignments because that's where all the side-effects take place.
     if(step_it->is_assignment() && !step_it->ignore)
     {
-      //std::cout << step_it->cond_expr.pretty() << std::endl;
-      //step_it->output(ns, std::cout);
-      //std::cout << from_expr(bmc.ns, "", step_it->cond_expr) << std::endl;
+      // std::cout << step_it->cond_expr.pretty() << std::endl;
+      // step_it->output(bmc.ns, std::cout);
+      // std::cout << from_expr(bmc.ns, "", step_it->cond_expr) << std::endl;
       bv_cbmc.set_to_true(step_it->cond_expr);
       stepper.next_instruction();
     }

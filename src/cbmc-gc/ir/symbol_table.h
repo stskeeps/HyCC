@@ -56,8 +56,16 @@ private:
 class VarDecl : public Decl
 {
 public:
-	VarDecl(std::string const &name, typet const &type, int scope_depth) :
-		Decl{DeclKind::variable, name, type, scope_depth} {}
+	VarDecl(std::string const &name, typet const &type, int scope_depth,
+			bool is_explicit = false) :
+		Decl{DeclKind::variable, name, type, scope_depth},
+		m_explicit(is_explicit)
+	{}
+
+	bool is_explicit() const { return m_explicit; }
+
+private:
+	bool m_explicit;
 };
 
 class FuncDecl : public Decl
@@ -138,6 +146,15 @@ public:
 	VarDecl* declare_var(std::string const &name, typet const &type)
 	{
 		auto res = m_symbols.insert({name, std::unique_ptr<Decl>{new VarDecl{name, type, m_depth}}});
+		if(!res.second)
+			throw std::runtime_error{"Symbol \"" + name + "\" already exists"};
+
+		return static_cast<VarDecl*>(res.first->second.get());
+	}
+
+	VarDecl* declare_var_explicit(std::string const &name, typet const &type)
+	{
+		auto res = m_symbols.insert({name, std::unique_ptr<Decl>{new VarDecl{name, type, m_depth, true}}});
 		if(!res.second)
 			throw std::runtime_error{"Symbol \"" + name + "\" already exists"};
 

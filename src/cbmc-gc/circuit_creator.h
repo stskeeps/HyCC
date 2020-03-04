@@ -295,7 +295,9 @@ inline std::string export_type(typet const &t);
 
 inline void export_type(typet const &t, std::string &out)
 {
-  if(t.id() == ID_signedbv)
+  if(t.id() == ID_c_bool)
+    out = std::string{"_Bool"} + out;
+  else if(t.id() == ID_signedbv)
     out = std::string{"int"} + t.get("width").c_str() + out;
   else if(t.id() == ID_unsignedbv)
     out = std::string{"uint"} + t.get("width").c_str() + out;

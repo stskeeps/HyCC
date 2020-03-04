@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <iostream>
 #include <sstream>
+#include <map>
 
 #include "sorted_vector.h"
 
@@ -203,8 +204,28 @@ bool ends_with(std::basic_string<T> const &str, T const *suffix)
 }
 
 
-template<typename Range>
-void join(std::ostream &os, Range const &range, char const *sep)
+template<typename OutIt, typename T>
+OutIt iota_n(OutIt it, size_t n, T value)
+{
+	while(n--)
+	{
+		*it++ = value;
+		++value;
+	}
+
+	return it;
+}
+
+
+struct Identity
+{
+	template<typename T>
+	T&& operator () (T &&v) const { return std::forward<T>(v); }
+};
+
+
+template<typename Range, typename Projection = Identity>
+void join(std::ostream &os, Range const &range, char const *sep, Projection &&proj = Identity{})
 {
   using std::begin;
   using std::end;
@@ -215,16 +236,16 @@ void join(std::ostream &os, Range const &range, char const *sep)
   if(first == last)
     return;
 
-  os << *first;
+  os << proj(*first);
   while(++first != last)
-    os << sep << *first;
+    os << sep << proj(*first);
 }
 
-template<typename Range>
-std::string join(Range const &range, char const *sep)
+template<typename Range, typename Projection = Identity>
+std::string join(Range const &range, char const *sep, Projection &&proj = Identity{})
 {
   std::stringstream ss;
-  join(ss, range, sep);
+  join(ss, range, sep, proj);
   return ss.str();
 }
 
@@ -528,6 +549,63 @@ public:
 private:
   It m_it;
 };
+
+template<typename K, typename V, typename A>
+IteratorRange<PairSecondIterator<typename std::map<K, V, A>::const_iterator>>
+values(std::map<K, V, A> const &m)
+{
+	return {{m.begin()}, {m.end()}};
+}
+
+//==================================================================================================
+template<typename T, typename Tag>
+struct TaggedValue
+{
+	using value_type = T;
+
+	TaggedValue() = default;
+	explicit TaggedValue(T value) :
+		value{value} {}
+
+	// To make a TaggedValue usable with std::iota()
+	TaggedValue& operator ++ ()
+	{
+		++value;
+		return *this;
+	}
+
+	value_type value;
+};
+
+template<typename T, typename Tag>
+inline bool operator < (TaggedValue<T, Tag> const &a, TaggedValue<T, Tag> const &b)
+{
+	return a.value < b.value;
+}
+
+template<typename T, typename Tag>
+inline bool operator <= (TaggedValue<T, Tag> const &a, TaggedValue<T, Tag> const &b)
+{
+	return a.value <= b.value;
+}
+
+
+
+namespace std {
+
+template<typename T, typename Tag>
+struct hash<::TaggedValue<T, Tag>>
+{
+	using argument_type = ::TaggedValue<T, Tag>;
+	using result_type = size_t;
+
+	result_type operator () (argument_type const &v) const
+	{
+		return hash<T>{}(v.value);
+	}
+};
+
+}
 
 
 //==================================================================================================

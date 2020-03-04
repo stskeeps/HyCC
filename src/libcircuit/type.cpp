@@ -13,6 +13,11 @@ static void type_to_string(Type const &t, std::string &out)
 			out = "bits#" + std::to_string(t.bits().width) + out;
 		} break;
 
+		case TypeKind::boolean:
+		{
+			out = "bool" + out;
+		} break;
+
 		case TypeKind::integer:
 		{
 			char const *type_name = t.integer().is_signed ? "int" : "uint";

@@ -114,7 +114,7 @@ bool validate_function(Function const *func, InstrNameMap *names, std::ostream *
 	bool well_formed = true;
 	DominatorTree dom_tree = compute_idoms(*func, DominatorFuncs{});
 
-	if(dom_tree.get_idom(func->start_block()) != func->start_block())
+	if(dom_tree.get_idom(func->start_block()))
 	{
 		well_formed = false;
 		(*os) << "Error: start block is dominated by another basic block" << std::endl;

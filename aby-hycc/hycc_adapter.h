@@ -43,7 +43,7 @@ struct Options
 	std::string main_circuit;
 
 	bool perform_test = false;
-	bool quite = false;
+	bool quiet = false;
 };
 
 /**
