@@ -1,5 +1,7 @@
 bin
 
+CBMC_GC_INFO
+
 src/libcircuit/compiler_flags.h
 src/cbmc-gc/compiler_flags.h
 src/cbmc-gc/cbmc-gc
@@ -7,6 +9,9 @@ src/cbmc-gc/test/test
 *.o
 *.d
 *.a
+*.dot
+*.circ
+*.stats
 
 src/cbmc/src/java_bytecode/library/classes/
 src/cbmc/src/java_bytecode/library/converter

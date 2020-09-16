@@ -31,7 +31,7 @@ jsil_y.tab.cpp: parser.y
 	$(YACC) $(YFLAGS) $$flags -pyyjsil -d parser.y -o $@
 
 jsil_y.tab.h: jsil_y.tab.cpp
-	if [ -e jsil_y.tab.hpp ] ; then mv jsil_y.tab.hpp jsil_y.tab.h ; else \
+	if [ -e jsil_y.tab.hpp ] ; then mv jsil_y.tab.hpp jsil_y.tab.h ; elif [ -e jsil_y.tab.cpp.h ] ; then \
         mv jsil_y.tab.cpp.h jsil_y.tab.h ; fi
 
 jsil_lex.yy.cpp: scanner.l

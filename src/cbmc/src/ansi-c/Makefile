@@ -67,7 +67,7 @@ ansi_c_y.tab.cpp: parser.y
 	$(YACC) $(YFLAGS) $$flags -pyyansi_c -d parser.y -o $@
 
 ansi_c_y.tab.h: ansi_c_y.tab.cpp
-	if [ -e ansi_c_y.tab.hpp ] ; then mv ansi_c_y.tab.hpp ansi_c_y.tab.h ; else \
+	if [ -e ansi_c_y.tab.hpp ] ; then mv ansi_c_y.tab.hpp ansi_c_y.tab.h ; elif [ -e ansi_c_y.tab.cpp.h ] ; then \
         mv ansi_c_y.tab.cpp.h ansi_c_y.tab.h ; fi
 
 ansi_c_lex.yy.cpp: scanner.l

@@ -23,7 +23,7 @@ xml_y.tab.cpp: parser.y
 	$(YACC) $(YFLAGS) $$flags -pyyxml -d parser.y -o $@
 
 xml_y.tab.h: xml_y.tab.cpp
-	if [ -e xml_y.tab.hpp ] ; then mv xml_y.tab.hpp $@ ; else \
+	if [ -e xml_y.tab.hpp ] ; then mv xml_y.tab.hpp $@ ; elif [ -e xml_y.tab.cpp.h ] ; then \
         mv xml_y.tab.cpp.h $@ ; fi
 
 xml_lex.yy.cpp: scanner.l

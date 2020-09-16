@@ -21,7 +21,7 @@ json_y.tab.cpp: parser.y
 	$(YACC) $(YFLAGS) $$flags -pyyjson -d parser.y -o $@
 
 json_y.tab.h: json_y.tab.cpp
-	if [ -e json_y.tab.hpp ] ; then mv json_y.tab.hpp $@ ; else \
+	if [ -e json_y.tab.hpp ] ; then mv json_y.tab.hpp $@ ; elif [ -e json_y.tab.cpp.h ] ; then \
         mv json_y.tab.cpp.h $@ ; fi
 
 json_lex.yy.cpp: scanner.l
