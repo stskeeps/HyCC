@@ -66,16 +66,17 @@ all: ansi-c$(LIBEXT)
 ansi_c_y.tab.cpp: parser.y
 	$(YACC) $(YFLAGS) $$flags -pyyansi_c -d parser.y -o $@
 
-ansi_c_y.tab.h: ansi_c_y.tab.cpp
-	if [ -e ansi_c_y.tab.hpp ] ; then mv ansi_c_y.tab.hpp ansi_c_y.tab.h ; elif [ -e ansi_c_y.tab.cpp.h ] ; then \
-        mv ansi_c_y.tab.cpp.h ansi_c_y.tab.h ; fi
+ansi_c_y.tab.hpp:
+# ansi_c_y.tab.cpp
+#	if [ -e ansi_c_y.tab.hpp ] ; then mv ansi_c_y.tab.hpp ansi_c_y.tab.h ; elif [ -e ansi_c_y.tab.cpp.h ] ; then \
+#        mv ansi_c_y.tab.cpp.h ansi_c_y.tab.h ; fi
 
 ansi_c_lex.yy.cpp: scanner.l
 	$(LEX) -Pyyansi_c -o$@ scanner.l
 
 # extra dependencies
-ansi_c_y.tab$(OBJEXT): ansi_c_y.tab.cpp ansi_c_y.tab.h
-ansi_c_lex.yy$(OBJEXT): ansi_c_y.tab.cpp ansi_c_lex.yy.cpp ansi_c_y.tab.h
+ansi_c_y.tab$(OBJEXT): ansi_c_y.tab.cpp ansi_c_y.tab.hpp
+ansi_c_lex.yy$(OBJEXT): ansi_c_y.tab.cpp ansi_c_lex.yy.cpp ansi_c_y.tab.hpp
 cprover_library$(OBJEXT): cprover_library.inc
 
 ###############################################################################

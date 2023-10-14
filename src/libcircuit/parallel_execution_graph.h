@@ -5,7 +5,7 @@
 
 #include <unordered_set>
 #include <memory>
-
+#include <limits>
 
 // List of gates (and their corresponding blocks) that are inputs to a block. A gate `g` is a block
 // input to a block `b` if one of `g`'s fanouts  is part of `b`, but not `g` itself.

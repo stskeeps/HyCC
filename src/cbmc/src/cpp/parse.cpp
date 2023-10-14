@@ -19,7 +19,7 @@ Author: Daniel Kroening, kroening@cs.cmu.edu
 #include <util/std_expr.h>
 #include <util/std_types.h>
 
-#include <ansi-c/ansi_c_y.tab.h>
+#include <ansi-c/ansi_c_y.tab.hpp>
 #include <util/c_types.h>
 
 #include "cpp_token_buffer.h"

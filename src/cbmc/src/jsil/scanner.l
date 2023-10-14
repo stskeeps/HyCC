@@ -15,7 +15,7 @@
 #define YYSTYPE unsigned
 
 #include "jsil_parser.h"
-#include "jsil_y.tab.h"
+#include "jsil_y.tab.hpp"
 // extern int yyjsildebug;
 
 #define loc() \

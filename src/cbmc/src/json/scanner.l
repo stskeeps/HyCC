@@ -15,7 +15,7 @@
 #define PARSER json_parser
 
 #include "json_parser.h"
-#include "json_y.tab.h"
+#include "json_y.tab.hpp"
 
 #include <util/pragma_wsign_compare.def>
 #include <util/pragma_wnull_conversion.def>

@@ -36,7 +36,7 @@ static int isatty(int) { return 0; }
 #define ECHO
 
 #include "ansi_c_parser.h"
-#include "ansi_c_y.tab.h"
+#include "ansi_c_y.tab.hpp"
 #ifdef ANSI_C_DEBUG
 extern int yyansi_cdebug;
 #endif

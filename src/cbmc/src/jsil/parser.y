@@ -16,7 +16,7 @@ extern char *yyjsiltext;
 
 #include <ansi-c/string_constant.h>
 
-#include "jsil_y.tab.h"
+#include "jsil_y.tab.hpp"
 /*** token declaration **************************************************/
 %}
 

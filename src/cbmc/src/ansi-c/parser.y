@@ -24,7 +24,7 @@ extern char *yyansi_ctext;
 
 #include "literals/convert_integer_literal.h"
 
-#include "ansi_c_y.tab.h"
+#include "ansi_c_y.tab.hpp"
 
 // statements have right recursion, deep nesting of statements thus
 // requires more stack space

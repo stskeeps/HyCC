@@ -12,6 +12,7 @@
 #include <ostream>
 #include <sstream>
 #include <bitset>
+#include <limits>
 
 #include <iostream>
 

@@ -11,7 +11,7 @@
 #include <cstdlib>
 
 #include "xml_parser.h"
-#include "xml_y.tab.h"
+#include "xml_y.tab.hpp"
 
 #define PARSER xml_parser
 

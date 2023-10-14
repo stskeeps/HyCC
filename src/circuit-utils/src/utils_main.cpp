@@ -6,6 +6,7 @@
 #include <map>
 #include <fstream>
 #include <unordered_set>
+#include <limits>
 
 
 namespace circ {

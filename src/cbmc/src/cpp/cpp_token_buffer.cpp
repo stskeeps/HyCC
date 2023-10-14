@@ -13,7 +13,7 @@ Author: Daniel Kroening, kroening@cs.cmu.edu
 
 #include <cassert>
 
-#include <ansi-c/ansi_c_y.tab.h>
+#include <ansi-c/ansi_c_y.tab.hpp>
 #include <ansi-c/ansi_c_parser.h>
 
 int cpp_token_buffert::LookAhead(unsigned offset)

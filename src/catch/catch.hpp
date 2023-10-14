@@ -11,6 +11,7 @@
 #ifndef TWOBLUECUBES_SINGLE_INCLUDE_CATCH_HPP_INCLUDED
 #define TWOBLUECUBES_SINGLE_INCLUDE_CATCH_HPP_INCLUDED
 
+#define CATCH_CONFIG_POSIX_SIGNALS
 #define TWOBLUECUBES_CATCH_HPP_INCLUDED
 
 #ifdef __clang__
@@ -18,7 +19,6 @@
 #elif defined __GNUC__
 #    pragma GCC system_header
 #endif
-
 // #included from: internal/catch_suppress_warnings.h
 
 #ifdef __clang__
@@ -6468,7 +6468,6 @@ namespace Catch {
         static bool isSet;
         static struct sigaction oldSigActions [sizeof(signalDefs)/sizeof(SignalDefs)];
         static stack_t oldSigStack;
-        static char altStackMem[SIGSTKSZ];
 
         static void handleSignal( int sig ) {
             std::string name = "<unknown signal>";
@@ -6487,8 +6486,8 @@ namespace Catch {
         FatalConditionHandler() {
             isSet = true;
             stack_t sigStack;
-            sigStack.ss_sp = altStackMem;
-            sigStack.ss_size = SIGSTKSZ;
+            sigStack.ss_sp = 0;
+            sigStack.ss_size = 0;
             sigStack.ss_flags = 0;
             sigaltstack(&sigStack, &oldSigStack);
             struct sigaction sa = { 0 };
@@ -6519,7 +6518,6 @@ namespace Catch {
     bool FatalConditionHandler::isSet = false;
     struct sigaction FatalConditionHandler::oldSigActions[sizeof(signalDefs)/sizeof(SignalDefs)] = {};
     stack_t FatalConditionHandler::oldSigStack = {};
-    char FatalConditionHandler::altStackMem[SIGSTKSZ] = {};
 
 } // namespace Catch
 
