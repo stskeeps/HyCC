@@ -951,32 +951,35 @@ struct VectorHash
 constexpr size_t NPOS = -1;
 
 
-inline size_t count_trailing_zeros(uint32_t val)
-{
-  if(val == 0)
-    return 32;
+template <typename T>
+inline size_t count_trailing_zeros(T val);
 
-  return __builtin_ctz(val);
+template <>
+inline size_t count_trailing_zeros<uint32_t>(uint32_t val) {
+    if(val == 0)
+        return 32;
+
+    return __builtin_ctz(val);
 }
 
-inline size_t count_trailing_zeros(uint64_t val)
-{
-  if(val == 0)
-    return 64;
+template <>
+inline size_t count_trailing_zeros<uint64_t>(uint64_t val) {
+    if(val == 0)
+        return 64;
 
-  return __builtin_ctzll(val);
+    return __builtin_ctzll(val);
 }
 
 template<typename T>
 size_t find_bit(T val, size_t start_idx = 0)
 {
-  // Set bits before `start_idx` to zero
-  val &= ~T(0) << start_idx;
+    // Set bits before `start_idx` to zero
+    val &= ~T(0) << start_idx;
 
-  if(val == 0)
-    return NPOS;
+    if(val == 0)
+        return NPOS;
 
-  return count_trailing_zeros(val);
+    return count_trailing_zeros(val);
 }
 
 
