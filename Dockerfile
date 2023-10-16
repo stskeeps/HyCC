@@ -1,6 +1,6 @@
 FROM amd64/ubuntu:latest
 
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     g++ \
     flex \
@@ -12,7 +12,8 @@ RUN apt-get update && apt-get install -y \
     wget \
     unzip \
     zlib1g-dev \
-    openjdk-11-jdk
+    openjdk-11-jdk && \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -21,3 +22,5 @@ COPY . .
 
 RUN make minisat2-download
 RUN make
+
+ENV PATH="${PATH}:/app/bin"
