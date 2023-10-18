@@ -119,7 +119,7 @@ public:
 
     bool string_abstraction;
 
-    static const std::size_t default_object_bits=8;
+    static const std::size_t default_object_bits=16;
   } ansi_c;
 
   struct cppt
